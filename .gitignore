@@ -1,2 +1,9 @@
+# idea
+.idea
+*.iml
+
+# building
+target
+
 *.class
 *.log
