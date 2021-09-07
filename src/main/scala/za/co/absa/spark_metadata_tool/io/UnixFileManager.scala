@@ -21,6 +21,17 @@ case object UnixFileManager extends FileManager {
     }
   }
 
+  //TODO: merge with listFiles method
+  override def listDirs(path: String): Either[IoError, Seq[String]] = {
+    val dir = new File(path)
+
+    checkDirectoryExists(dir) match {
+      case Right(true)  => Right(dir.listFiles().filter(_.isDirectory()).toSeq.map(_.getName()))
+      case Right(false) => Left(IoError(s"$path does not exist or is not a directory"))
+      case Left(error)  => Left(error)
+    }
+  }
+
   override def delete(path: String): Either[IoError, Unit]           = ???
   override def move(from: String, to: String): Either[IoError, Unit] = ???
 
@@ -28,7 +39,7 @@ case object UnixFileManager extends FileManager {
     src.getLines().toSeq
   }.fold(err => Left(IoError(err.getMessage())), lines => Right(lines))
 
-  //overwrites by default
+  // overwrites by default
   override def write(path: String, lines: Seq[String]): Either[IoError, Unit] =
     Using(new PrintWriter(new FileOutputStream(new File(path)))) { writer =>
       writer.write(lines.mkString("\n"))
