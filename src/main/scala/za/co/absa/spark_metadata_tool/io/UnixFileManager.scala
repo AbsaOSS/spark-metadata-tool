@@ -1,12 +1,29 @@
+/*
+ * Copyright 2018 ABSA Group Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package za.co.absa.spark_metadata_tool.io
 
+import cats.implicits._
 import za.co.absa.spark_metadata_tool.model.IoError
-import scala.io.Source
-import scala.util.Using
-import java.io.PrintWriter
-import java.io.FileOutputStream
+
 import java.io.File
+import java.io.FileOutputStream
+import java.io.PrintWriter
+import scala.io.Source
 import scala.util.Try
+import scala.util.Using
 
 case object UnixFileManager extends FileManager {
 
@@ -15,9 +32,9 @@ case object UnixFileManager extends FileManager {
     val dir = new File(path)
 
     checkDirectoryExists(dir) match {
-      case Right(true)  => Right(dir.listFiles().filter(_.isFile).toSeq.map(_.getAbsolutePath))
-      case Right(false) => Left(IoError(s"$path does not exist or is not a directory"))
-      case Left(error)  => Left(error)
+      case Right(true)  => dir.listFiles().filter(_.isFile).toSeq.map(_.getAbsolutePath).asRight
+      case Right(false) => IoError(s"$path does not exist or is not a directory").asLeft
+      case Left(error)  => error.asLeft
     }
   }
 
@@ -26,9 +43,9 @@ case object UnixFileManager extends FileManager {
     val dir = new File(path)
 
     checkDirectoryExists(dir) match {
-      case Right(true)  => Right(dir.listFiles().filter(_.isDirectory()).toSeq.map(_.getName()))
-      case Right(false) => Left(IoError(s"$path does not exist or is not a directory"))
-      case Left(error)  => Left(error)
+      case Right(true)  => dir.listFiles().filter(_.isDirectory()).toSeq.map(_.getName()).asRight
+      case Right(false) => IoError(s"$path does not exist or is not a directory").asLeft
+      case Left(error)  => error.asLeft
     }
   }
 

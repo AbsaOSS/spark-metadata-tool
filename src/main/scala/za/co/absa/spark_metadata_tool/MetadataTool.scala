@@ -1,16 +1,33 @@
+/*
+ * Copyright 2018 ABSA Group Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package za.co.absa.spark_metadata_tool
 
-import spray.json._
-import DefaultJsonProtocol._
-import za.co.absa.spark_metadata_tool.model.FileLine
-import za.co.absa.spark_metadata_tool.model.StringLine
-import za.co.absa.spark_metadata_tool.model.JsonLine
-import scala.util.Try
-import za.co.absa.spark_metadata_tool.model.AppConfig
-import za.co.absa.spark_metadata_tool.io.FileManager
-import za.co.absa.spark_metadata_tool.model.AppError
 import cats.implicits._
+import spray.json._
+import za.co.absa.spark_metadata_tool.io.FileManager
+import za.co.absa.spark_metadata_tool.model.AppConfig
+import za.co.absa.spark_metadata_tool.model.AppError
+import za.co.absa.spark_metadata_tool.model.FileLine
+import za.co.absa.spark_metadata_tool.model.JsonLine
 import za.co.absa.spark_metadata_tool.model.NotFoundError
+import za.co.absa.spark_metadata_tool.model.StringLine
+
+import scala.util.Try
+
+import DefaultJsonProtocol._
 
 class MetadataTool(io: FileManager, config: AppConfig) {
 
@@ -30,7 +47,7 @@ class MetadataTool(io: FileManager, config: AppConfig) {
 
   private def parseFile(path: String): Either[AppError, Seq[FileLine]] = for {
     lines       <- io.readAllLines(path)
-    parsedLines <- Right(lines.map(parseLine(_)))
+    parsedLines <- lines.map(parseLine(_)).asRight
   } yield parsedLines
 
   private def parseLine(line: String): FileLine =
