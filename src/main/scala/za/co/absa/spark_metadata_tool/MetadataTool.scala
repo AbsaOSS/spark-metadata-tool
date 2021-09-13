@@ -18,7 +18,6 @@ package za.co.absa.spark_metadata_tool
 import cats.implicits._
 import spray.json._
 import za.co.absa.spark_metadata_tool.io.FileManager
-import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.JsonLine
@@ -27,56 +26,111 @@ import za.co.absa.spark_metadata_tool.model.StringLine
 
 import scala.util.Try
 
-import DefaultJsonProtocol._
+import org.apache.hadoop.fs.Path
 
-class MetadataTool(io: FileManager, config: AppConfig) {
+class MetadataTool(io: FileManager) {
 
-  val metadataDir = "_spark_metadata"
+  /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
+    *
+    * Parses each line as either a [[String]] or [[JsObject]] and wraps the results into a [[Seq]] of [[FileLine]]
+    *
+    * @param path
+    *   location of the file
+    * @return
+    *   sequence of parsed lines or an error
+    */
+  def loadFile(path: Path): Either[AppError, Seq[FileLine]] = for {
+    lines  <- io.readAllLines(path.toString)
+    parsed <- lines.map(parseLine).asRight
+  } yield parsed
 
-  def fixMetadataFiles: Either[AppError, Unit] = for {
-    files <- io.listFiles(s"${config.path}/$metadataDir")
-    key   <- getFirstPartitionKey
-    _     <- files.traverse(file => processFile(file, key)) //TODO: backups and rollback on failure
-  } yield ()
+  /** Fixes paths to output files in all relevant lines.
+    *
+    * If the name of first partition key is provided, it splits the old paths on the key name and replaces the old base
+    * path with provided new one. If a path that does not contain the key is found, returns error.
+    *
+    * If no partition key is provided, it assumes paths do not contain any partitionins, in which case each old path is
+    * fully replaced by the new base path.
+    *
+    * If any JSON object contained in [[JsonLine]] doesn't contain a "path" key, error is returned.
+    *
+    * Regular lines contained in [[StringLine]] are left untouched.
+    *
+    * @param data
+    *   parsed lines of a single Spark structured streaming metadata file to be fixed
+    * @param newBasePath
+    *   path specifying current location of the data, used to fix old paths
+    * @param firstPartitionKey
+    *   name of the first partition key
+    * @return
+    *   sequence of lines with fixed paths or an error
+    */
+  def fixPaths(
+    data: Seq[FileLine],
+    newBasePath: Path,
+    firstPartitionKey: Option[String]
+  ): Either[AppError, Seq[FileLine]] = data.traverse(line => processLine(line, newBasePath, firstPartitionKey))
 
-  private def processFile(path: String, firstPartitionKey: String): Either[AppError, Unit] = for {
-    lines <- parseFile(path)
-    fixed <- lines.traverse(line => processLine(line, firstPartitionKey))
-    _     <- io.write(path, fixed.map(_.toString))
-  } yield ()
+  /** Saves the data into a file on provided path. If the file already exists, its contents will be overwritten.
+    *
+    * @param path
+    *   where to save the file
+    * @param data
+    *   sequence of lines to be written
+    * @return
+    *   Unit or an error
+    */
+  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path.toString, data.map(_.toString))
 
-  private def parseFile(path: String): Either[AppError, Seq[FileLine]] = for {
-    lines       <- io.readAllLines(path)
-    parsedLines <- lines.map(parseLine(_)).asRight
-  } yield parsedLines
-
-  private def parseLine(line: String): FileLine =
-    Try(line.parseJson).fold(_ => StringLine(line), json => JsonLine(json))
-
-  private def processLine(line: FileLine, firstPartitionKey: String): Either[AppError, FileLine] = line match {
-    case StringLine(line) => StringLine(line).asRight
-    case JsonLine(line) =>
-      for {
-        oldPath  <- line.asJsObject.fields.get("path").toRight(NotFoundError(s"Couldn't find key 'path' in $line"))
-        newPath  <- fixPath(oldPath.convertTo[String], firstPartitionKey, config.path).toJson.asRight
-        fixedLine = line.asJsObject.copy(fields = line.asJsObject.fields ++ Map(("path", newPath)))
-      } yield JsonLine(fixedLine)
-  }
-
-  private def fixPath(path: String, key: String, newPath: String): String =
-    path.replaceFirst(s".*/$key=", s"${config.filesystem.pathPrefix}${stripLeadingSlash(newPath)}/$key=")
-
-  private def getFirstPartitionKey: Either[AppError, String] = for {
-    dirs          <- io.listDirs(config.path)
-    partitionDirs <- dirs.filterNot(_ == metadataDir).asRight
+  //TODO: Might opt to resolve this by comparing with an actual path as this would still fail for key "_key1="
+  def getFirstPartitionKey(rootDirPath: Path): Either[AppError, Option[String]] = for {
+    dirs          <- io.listDirs(rootDirPath.toString)
+    partitionDirs <- dirs.filterNot(_.startsWith("_")).asRight
     key <- partitionDirs
              .map(_.split("="))
              .find(_.length > 1)
              .flatMap(_.headOption)
-             .toRight(NotFoundError("Couldn't find first partition key"))
+             .asRight
   } yield key
 
-  //FIXME: this needs to be handled better for consistency, ideally in arguement parsing, need to strip filesystem prefixes and trailing slashes as well
-  private def stripLeadingSlash(path: String): String = if (path.startsWith("/")) path.drop(1) else path
+  private def parseLine(line: String): FileLine =
+    Try(line.parseJson.asJsObject).fold(_ => StringLine(line), json => JsonLine(json))
+
+  private def processLine(
+    line: FileLine,
+    newBasePath: Path,
+    firstPartitionKey: Option[String]
+  ): Either[AppError, FileLine] = line match {
+    case l: StringLine => l.asRight
+    case l: JsonLine   => fixJsonLine(l, newBasePath, firstPartitionKey)
+  }
+
+  private def fixJsonLine(
+    line: JsonLine,
+    newBasePath: Path,
+    firstPartitionKey: Option[String]
+  ): Either[AppError, JsonLine] = for {
+    oldPath <- line.value.fields
+                 .get("path")
+                 .fold(NotFoundError(s"Couldn't find key 'path' in $line").asLeft: Either[NotFoundError, Path])(
+                   _.convertTo[Path].asRight
+                 )
+    newPath <- fixPath(
+                 oldPath,
+                 newBasePath,
+                 firstPartitionKey
+               )
+    fixedLine = line.value.copy(fields = line.value.fields + ("path" -> newPath.toJson))
+  } yield JsonLine(fixedLine)
+
+  private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =
+    firstPartitionKey.fold(newBasePath.asRight: Either[AppError, Path]) { key =>
+      val fixed = new Path(oldPath.toString.replaceFirst(s".*/$key=", s"$newBasePath/$key="))
+      if (fixed.compareTo(oldPath) == 0)
+        NotFoundError(
+          s"Failed to fix path $oldPath! Couldn't split as partition key $key was not found in the path."
+        ).asLeft
+      else fixed.asRight
+    }
 
 }

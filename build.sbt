@@ -10,6 +10,7 @@ lazy val root = (project in file("."))
     libraryDependencies ++= dependencies,
     semanticdbEnabled := true,                        // enable SemanticDB
     semanticdbVersion := scalafixSemanticdb.revision, // use Scalafix compatible version
+    addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
     scalacOptions ++= compilerOptions,
   )
 
