@@ -116,6 +116,88 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res.left.value shouldBe expected
   }
 
+  "First partition key lookup" should "return correct key" in {
+    val path         = s3BasePath
+    val key          = "key"
+    val metadataPath = createPath(s3BaseString, s"/$SparkMetadataDir".some)
+    val testFile     = stringLines ++ jsonLines(hdfsBaseString, key.some, 10)
+
+    (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
+
+    (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
+
+    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+
+    val res = metadataTool.getFirstPartitionKey(path)
+
+    res.value.value shouldBe key
+  }
+
+  it should "return None when no matching key is found" in {
+    val path         = s3BasePath
+    val metadataPath = createPath(s3BaseString, s"/$SparkMetadataDir".some)
+    val testFile     = stringLines ++ jsonLines(hdfsBaseString, None, 10)
+
+    (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
+
+    (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
+
+    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+
+    val res = metadataTool.getFirstPartitionKey(path)
+
+    res.value shouldBe None
+  }
+
+  it should "should ignore .compact files and fail if there's no file to load" in {
+    val path         = s3BasePath
+    val metadataPath = createPath(s3BaseString, s"/$SparkMetadataDir".some)
+    val expected     = NotFoundError(s"Couldn't find standard metadata file to load in $compactFiles")
+
+    (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
+
+    (fileManager.listFiles _).expects(metadataPath).returning(compactFiles.asRight)
+
+    val res = metadataTool.getFirstPartitionKey(path)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail when there's no JSON line in loaded file" in {
+    val path         = s3BasePath
+    val metadataPath = createPath(s3BaseString, s"/$SparkMetadataDir".some)
+    val testFilePath = createPath(s3BaseString, s"/$SparkMetadataDir/1".some)
+    val testFile     = stringLines
+    val expected     = NotFoundError(s"Couldn't find any JSON line in file $testFilePath")
+
+    (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
+
+    (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
+
+    (fileManager.readAllLines _).expects(testFilePath).returning(testFile.map(_.toString).asRight)
+
+    val res = metadataTool.getFirstPartitionKey(path)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail when there's JSON with missing 'path' key" in {
+    val path         = s3BasePath
+    val metadataPath = createPath(s3BaseString, s"/$SparkMetadataDir".some)
+    val testFile     = stringLines ++ Seq(JsonLine(lineNoPath.parseJson.asJsObject))
+    val expected     = NotFoundError(s"Couldn't find path in JSON line $lineNoPath")
+
+    (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
+
+    (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
+
+    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+
+    val res = metadataTool.getFirstPartitionKey(path)
+
+    res.left.value shouldBe expected
+  }
+
 }
 
 object MetadataToolSpec {
@@ -138,7 +220,32 @@ object MetadataToolSpec {
 
   def jsonLines(basePath: String, firstPartitionKey: Option[String], count: Int): Seq[FileLine] = for {
     value <- Seq.range(1, count)
-    path   = createPath(basePath, firstPartitionKey.map(key => createPartitions(key, value.toString)))
+    path   = createPath(basePath, firstPartitionKey.map(key => createPartitions(key, s"value${value.toString}")))
   } yield JsonLine(validLine(path).parseJson.asJsObject)
+
+  val mixedDirs = Seq(
+    createPath(s3BaseString, s"/$SparkMetadataDir".some),
+    createPath(s3BaseString, s"/key=value1".some),
+    createPath(s3BaseString, s"/randomDirectory".some),
+    createPath(s3BaseString, s"/key=value2".some),
+    createPath(s3BaseString, s"/key=value3".some),
+    createPath(s3BaseString, s"/dirWith=Sign".some),
+    createPath(s3BaseString, s"/key=value4".some)
+  )
+
+  val metaFiles = Seq(
+    createPath(s3BaseString, s"/$SparkMetadataDir/1".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/2".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/3".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/4".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/5".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/5.compact".some)
+  )
+
+  val compactFiles = Seq(
+    createPath(s3BaseString, s"/$SparkMetadataDir/1.compact".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/2.compact".some),
+    createPath(s3BaseString, s"/$SparkMetadataDir/3.compact".some)
+  )
 
 }

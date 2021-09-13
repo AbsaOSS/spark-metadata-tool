@@ -21,29 +21,30 @@ import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.io.FileManager
 import org.apache.hadoop.fs.Path
+import za.co.absa.spark_metadata_tool.model.TargetFilesystem
+import za.co.absa.spark_metadata_tool.model.Unix
+import za.co.absa.spark_metadata_tool.model.Hdfs
+import za.co.absa.spark_metadata_tool.model.S3
 
 object Application extends App {
-
-  val metadataDir = "_spark_metadata"
 
   //TODO: proper error handling
   run(args).leftMap(err => throw new RuntimeException(err.toString()))
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args)
-    metaPath          = new Path(s"${conf.path}/$metadataDir")
+    metaPath          = new Path(s"${conf.path}/$SparkMetadataDir")
     filesToFix       <- io.listFiles(metaPath)
     maybeKey         <- tool.getFirstPartitionKey(conf.path)
     _                <- filesToFix.traverse(path => fixFile(path, tool, conf.path, maybeKey))
   } yield ()
 
-  //TODO: better type than tuple?
-  def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
+  private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
     config <- ArgumentParser.createConfig(args)
-    io      = UnixFileManager //TODO: resolve according to fs in config
+    io      = initFileManager(config.filesystem)
   } yield (config, io, new MetadataTool(io))
 
-  def fixFile(
+  private def fixFile(
     path: Path,
     metaTool: MetadataTool,
     newBasePath: Path,
@@ -54,5 +55,11 @@ object Application extends App {
     _      <- metaTool.saveFile(path, fixed)
   } yield ()
 
-  println("done") //FIXME: PEM
+  //TODO: implement remaining file managers
+  private def initFileManager(fs: TargetFilesystem): FileManager = fs match {
+    case Unix => UnixFileManager
+    case Hdfs => throw new NotImplementedError
+    case S3   => throw new NotImplementedError
+  }
+
 }

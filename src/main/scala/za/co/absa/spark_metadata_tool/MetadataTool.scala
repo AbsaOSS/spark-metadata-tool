@@ -82,16 +82,38 @@ class MetadataTool(io: FileManager) {
     */
   def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data)
 
-  //TODO: Might opt to resolve this by comparing with an actual path as this would still fail for key "_key1="
+  /** Finds name of the top level partition, if it exists.
+    *
+    * Loads example path from random metadata file and compares it with names of directories in root folder. If root
+    * directory contais folder with name in form 'key=value' and such pair is found withing the loaded path, it is
+    * considered to be the first partition.
+    *
+    * @param rootDirPath
+    *   path to root directory
+    * @return
+    *   name of the first partition, None if it doesn't exist, error on failure
+    */
   def getFirstPartitionKey(rootDirPath: Path): Either[AppError, Option[String]] = for {
-    dirs          <- io.listDirectories(rootDirPath)
-    partitionDirs <- dirs.map(_.getName).filterNot(_.startsWith("_")).asRight
-    key <- partitionDirs
-             .map(_.split("="))
-             .find(_.length > 1)
-             .flatMap(_.headOption)
-             .asRight
+    dirs                <- io.listDirectories(rootDirPath)
+    partitionCandidates <- dirs.map(_.getName).filter(_.contains("=")).asRight
+    pathToMeta           = new Path(s"${rootDirPath.toString}/$SparkMetadataDir")
+    testPath            <- getPathFromMetaFile(pathToMeta)
+    firstPartition      <- partitionCandidates.find(dir => testPath.toString.contains(dir)).asRight
+    key                 <- firstPartition.flatMap(_.split("=").headOption).asRight
   } yield key
+
+  private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
+    metaFiles <- io.listFiles(path)
+    // avoid loading .compact files due to their potential size
+    file <- metaFiles
+              .find(!_.getName.endsWith("compact"))
+              .toRight(NotFoundError(s"Couldn't find standard metadata file to load in $metaFiles"))
+    parsed <- loadFile(file)
+    json <- parsed.collectFirst { case l: JsonLine =>
+              l.value.fields.get("path").toRight(NotFoundError(s"Couldn't find path in JSON line $l"))
+            }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
+    path <- json.map(_.convertTo[Path])
+  } yield path
 
   private def parseLine(line: String): FileLine =
     Try(line.parseJson.asJsObject).fold(_ => StringLine(line), json => JsonLine(json))

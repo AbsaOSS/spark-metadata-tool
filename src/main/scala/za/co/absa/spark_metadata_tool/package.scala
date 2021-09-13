@@ -6,6 +6,8 @@ import DefaultJsonProtocol._
 
 package object spark_metadata_tool {
 
+  val SparkMetadataDir = "_spark_metadata"
+
   implicit object HadoopPathJsonFormat extends RootJsonFormat[Path] {
     def write(p: Path) = p.toString.toJson
     def read(value: JsValue) = value match {
