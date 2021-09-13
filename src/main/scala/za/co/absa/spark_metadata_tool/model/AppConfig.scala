@@ -15,7 +15,9 @@
 
 package za.co.absa.spark_metadata_tool.model
 
+import org.apache.hadoop.fs.Path
+
 final case class AppConfig(
-  path: String,
+  path: Path,
   filesystem: TargetFilesystem
 )

@@ -24,43 +24,36 @@ import java.io.PrintWriter
 import scala.io.Source
 import scala.util.Try
 import scala.util.Using
+import org.apache.hadoop.fs.Path
+import za.co.absa.spark_metadata_tool.model.FileLine
 
 case object UnixFileManager extends FileManager {
 
-  //TODO: check if safe(listFiles might need to be option)
-  override def listFiles(path: String): Either[IoError, Seq[String]] = {
-    val dir = new File(path)
+  override def listFiles(path: Path): Either[IoError, Seq[Path]] =
+    listDirectory(path).map(_.filter(_.isFile).map(f => new Path(f.getAbsolutePath)))
 
-    checkDirectoryExists(dir) match {
-      case Right(true)  => dir.listFiles().filter(_.isFile).toSeq.map(_.getAbsolutePath).asRight
-      case Right(false) => IoError(s"$path does not exist or is not a directory").asLeft
-      case Left(error)  => error.asLeft
-    }
-  }
+  override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
+    listDirectory(path).map(_.filter(_.isDirectory).map(d => new Path(d.getAbsolutePath)))
 
-  //TODO: merge with listFiles method
-  override def listDirs(path: String): Either[IoError, Seq[String]] = {
-    val dir = new File(path)
-
-    checkDirectoryExists(dir) match {
-      case Right(true)  => dir.listFiles().filter(_.isDirectory()).toSeq.map(_.getName()).asRight
-      case Right(false) => IoError(s"$path does not exist or is not a directory").asLeft
-      case Left(error)  => error.asLeft
-    }
-  }
-
-  override def delete(path: String): Either[IoError, Unit]           = ???
-  override def move(from: String, to: String): Either[IoError, Unit] = ???
-
-  override def readAllLines(path: String): Either[IoError, Seq[String]] = Using(Source.fromFile(path)) { src =>
+  override def readAllLines(path: Path): Either[IoError, Seq[String]] = Using(Source.fromFile(path.toString)) { src =>
     src.getLines().toSeq
   }.fold(err => Left(IoError(err.getMessage())), lines => Right(lines))
 
   // overwrites by default
-  override def write(path: String, lines: Seq[String]): Either[IoError, Unit] =
-    Using(new PrintWriter(new FileOutputStream(new File(path)))) { writer =>
+  override def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit] =
+    Using(new PrintWriter(new FileOutputStream(new File(path.toString)))) { writer =>
       writer.write(lines.mkString("\n"))
     }.fold(err => Left(IoError(err.getMessage())), _ => Right(()))
+
+  private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
+    val dir = new File(path.toString)
+
+    checkDirectoryExists(dir) match {
+      case Right(true)  => Try(dir.listFiles()).fold(err => IoError(err.getMessage).asLeft, files => files.toSeq.asRight)
+      case Right(false) => IoError(s"$path does not exist or is not a directory").asLeft
+      case Left(error)  => error.asLeft
+    }
+  }
 
   private def checkDirectoryExists(directory: File): Either[IoError, Boolean] = Try {
     directory.exists && directory.isDirectory

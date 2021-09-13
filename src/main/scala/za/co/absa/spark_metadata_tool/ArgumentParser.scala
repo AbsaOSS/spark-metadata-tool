@@ -23,16 +23,20 @@ import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownError
+import org.apache.hadoop.fs.Path
 
 object ArgumentParser {
-  implicit val filesystemRead: scopt.Read[TargetFilesystem] = scopt.Read.reads(fs =>
-    fs match {
-      case "unix" => Unix
-      case "hdfs" => Hdfs
-      case "s3"   => S3
-      case _      => throw new NoSuchElementException(s"Unrecognized filesystem $fs")
-    }
-  )
+  implicit val filesystemRead: scopt.Read[TargetFilesystem] = scopt.Read.reads {
+    case "unix" => Unix
+    case "hdfs" => Hdfs
+    case "s3"   => S3
+    case fs     => throw new NoSuchElementException(s"Unrecognized filesystem $fs")
+  }
+
+  implicit val hadoopPathRead: scopt.Read[Path] = scopt.Read.reads {
+    case s if !s.isEmpty => new Path(s)
+    case s               => throw new NoSuchElementException(s"$s is not a valid path")
+  }
 
   val builder = OParser.builder[AppConfig]
 
@@ -41,7 +45,7 @@ object ArgumentParser {
     OParser.sequence(
       programName("spark-metadata-tool"),
       head("spark-metadata-tool", "0.1.0-SNAPSHOT PLACEHOLDER"),
-      opt[String]('p', "path")
+      opt[Path]('p', "path")
         .required()
         .action((x, c) => c.copy(path = x))
         .text("path text"),
@@ -57,7 +61,7 @@ object ArgumentParser {
       parser,
       args,
       AppConfig(
-        "",
+        new Path("default"),
         Unix
       )
     )

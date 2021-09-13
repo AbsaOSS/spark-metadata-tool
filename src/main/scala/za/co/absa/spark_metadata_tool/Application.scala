@@ -31,9 +31,10 @@ object Application extends App {
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args)
-    files            <- io.listFiles(s"${conf.path}/$metadataDir").map(_.map(p => new Path(p)))
-    maybeKey         <- tool.getFirstPartitionKey(new Path(conf.path))
-    _                <- files.traverse(path => fixFile(path, tool, new Path(conf.path), maybeKey))
+    metaPath          = new Path(s"${conf.path}/$metadataDir")
+    filesToFix       <- io.listFiles(metaPath)
+    maybeKey         <- tool.getFirstPartitionKey(conf.path)
+    _                <- filesToFix.traverse(path => fixFile(path, tool, conf.path, maybeKey))
   } yield ()
 
   //TODO: better type than tuple?

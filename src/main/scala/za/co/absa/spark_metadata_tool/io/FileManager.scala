@@ -16,13 +16,12 @@
 package za.co.absa.spark_metadata_tool.io
 
 import za.co.absa.spark_metadata_tool.model.IoError
+import org.apache.hadoop.fs.Path
+import za.co.absa.spark_metadata_tool.model.FileLine
 
-//TODO: refactor list* into single parametrized method
 trait FileManager {
-  def listFiles(path: String): Either[IoError, Seq[String]]
-  def listDirs(path: String): Either[IoError, Seq[String]]
-  def readAllLines(path: String): Either[IoError, Seq[String]]
-  def write(path: String, lines: Seq[String]): Either[IoError, Unit]
-  def delete(path: String): Either[IoError, Unit]
-  def move(from: String, to: String): Either[IoError, Unit]
+  def listFiles(path: Path): Either[IoError, Seq[Path]]
+  def listDirectories(path: Path): Either[IoError, Seq[Path]]
+  def readAllLines(path: Path): Either[IoError, Seq[String]]
+  def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit]
 }

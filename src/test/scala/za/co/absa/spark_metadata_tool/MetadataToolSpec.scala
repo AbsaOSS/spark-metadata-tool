@@ -50,7 +50,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val path = s3BasePath
     val err  = IoError(s"Path $path does not exist")
 
-    (fileManager.readAllLines _).expects(path.toString).returning(err.asLeft)
+    (fileManager.readAllLines _).expects(path).returning(err.asLeft)
 
     val res = metadataTool.loadFile(path)
 
@@ -61,7 +61,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val path = s3BasePath
     val err  = IoError(s"Failed to write file to $path")
 
-    (fileManager.write _).expects(path.toString, *).returning(err.asLeft)
+    (fileManager.write _).expects(path, *).returning(err.asLeft)
 
     val res = metadataTool.saveFile(path, Seq.empty)
 

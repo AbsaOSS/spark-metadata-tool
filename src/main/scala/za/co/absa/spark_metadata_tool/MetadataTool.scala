@@ -40,7 +40,7 @@ class MetadataTool(io: FileManager) {
     *   sequence of parsed lines or an error
     */
   def loadFile(path: Path): Either[AppError, Seq[FileLine]] = for {
-    lines  <- io.readAllLines(path.toString)
+    lines  <- io.readAllLines(path)
     parsed <- lines.map(parseLine).asRight
   } yield parsed
 
@@ -80,12 +80,12 @@ class MetadataTool(io: FileManager) {
     * @return
     *   Unit or an error
     */
-  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path.toString, data.map(_.toString))
+  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data)
 
   //TODO: Might opt to resolve this by comparing with an actual path as this would still fail for key "_key1="
   def getFirstPartitionKey(rootDirPath: Path): Either[AppError, Option[String]] = for {
-    dirs          <- io.listDirs(rootDirPath.toString)
-    partitionDirs <- dirs.filterNot(_.startsWith("_")).asRight
+    dirs          <- io.listDirectories(rootDirPath)
+    partitionDirs <- dirs.map(_.getName).filterNot(_.startsWith("_")).asRight
     key <- partitionDirs
              .map(_.split("="))
              .find(_.length > 1)
