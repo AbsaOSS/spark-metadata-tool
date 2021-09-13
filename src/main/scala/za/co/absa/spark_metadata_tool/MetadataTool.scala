@@ -71,8 +71,7 @@ class MetadataTool(io: FileManager, config: AppConfig) {
     partitionDirs <- dirs.filterNot(_ == metadataDir).asRight
     key <- partitionDirs
              .map(_.split("="))
-             .filter(_.length > 1)
-             .headOption
+             .find(_.length > 1)
              .flatMap(_.headOption)
              .toRight(NotFoundError("Couldn't find first partition key"))
   } yield key
