@@ -16,6 +16,7 @@
 package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
+import org.apache.hadoop.fs.Path
 import spray.json._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.AppError
@@ -25,8 +26,6 @@ import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
 
 import scala.util.Try
-
-import org.apache.hadoop.fs.Path
 
 class MetadataTool(io: FileManager) {
 

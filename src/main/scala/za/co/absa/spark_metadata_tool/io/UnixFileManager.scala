@@ -16,6 +16,8 @@
 package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
+import org.apache.hadoop.fs.Path
+import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.io.File
@@ -24,8 +26,6 @@ import java.io.PrintWriter
 import scala.io.Source
 import scala.util.Try
 import scala.util.Using
-import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.FileLine
 
 case object UnixFileManager extends FileManager {
 

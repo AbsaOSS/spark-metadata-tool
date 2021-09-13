@@ -15,9 +15,9 @@
 
 package za.co.absa.spark_metadata_tool.io
 
-import za.co.absa.spark_metadata_tool.model.IoError
 import org.apache.hadoop.fs.Path
 import za.co.absa.spark_metadata_tool.model.FileLine
+import za.co.absa.spark_metadata_tool.model.IoError
 
 trait FileManager {
   def listFiles(path: Path): Either[IoError, Seq[Path]]

@@ -16,15 +16,15 @@
 package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
-import za.co.absa.spark_metadata_tool.io.UnixFileManager
-import za.co.absa.spark_metadata_tool.model.AppError
-import za.co.absa.spark_metadata_tool.model.AppConfig
-import za.co.absa.spark_metadata_tool.io.FileManager
 import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.TargetFilesystem
-import za.co.absa.spark_metadata_tool.model.Unix
+import za.co.absa.spark_metadata_tool.io.FileManager
+import za.co.absa.spark_metadata_tool.io.UnixFileManager
+import za.co.absa.spark_metadata_tool.model.AppConfig
+import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.Hdfs
 import za.co.absa.spark_metadata_tool.model.S3
+import za.co.absa.spark_metadata_tool.model.TargetFilesystem
+import za.co.absa.spark_metadata_tool.model.Unix
 
 object Application extends App {
 

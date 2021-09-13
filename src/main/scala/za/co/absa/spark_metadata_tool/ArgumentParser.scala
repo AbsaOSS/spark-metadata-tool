@@ -15,6 +15,7 @@
 
 package za.co.absa.spark_metadata_tool
 
+import org.apache.hadoop.fs.Path
 import scopt.OParser
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
@@ -23,7 +24,6 @@ import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownError
-import org.apache.hadoop.fs.Path
 
 object ArgumentParser {
   implicit val filesystemRead: scopt.Read[TargetFilesystem] = scopt.Read.reads {
