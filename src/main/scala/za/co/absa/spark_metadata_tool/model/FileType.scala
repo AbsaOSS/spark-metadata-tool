@@ -15,13 +15,8 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-import spray.json.JsObject
+sealed trait FileType
 
-sealed trait FileLine extends Serializable
-
-case class StringLine(value: String) extends FileLine {
-  override def toString: String = value
-}
-case class JsonLine(value: JsObject) extends FileLine {
-  override def toString: String = value.compactPrint
-}
+case object File      extends FileType
+case object Directory extends FileType
+case object All       extends FileType
