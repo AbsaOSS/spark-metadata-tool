@@ -17,7 +17,9 @@ package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.io.FileManager
+import za.co.absa.spark_metadata_tool.io.S3FileManager
 import za.co.absa.spark_metadata_tool.io.UnixFileManager
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
@@ -29,7 +31,7 @@ import za.co.absa.spark_metadata_tool.model.Unix
 object Application extends App {
 
   //TODO: proper error handling
-  run(args).leftMap(err => throw new RuntimeException(err.toString))
+  run(args).leftMap(err => throw new RuntimeException(err.toString()))
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args)
@@ -59,7 +61,7 @@ object Application extends App {
   private def initFileManager(fs: TargetFilesystem): FileManager = fs match {
     case Unix => UnixFileManager
     case Hdfs => throw new NotImplementedError
-    case S3   => throw new NotImplementedError
+    case S3   => S3FileManager(S3Client.builder().build())
   }
 
 }
