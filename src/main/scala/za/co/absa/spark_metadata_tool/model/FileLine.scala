@@ -20,8 +20,8 @@ import spray.json.JsObject
 sealed trait FileLine
 
 case class StringLine(value: String) extends FileLine {
-  override def toString() = value
+  override def toString: String = value
 }
 case class JsonLine(value: JsObject) extends FileLine {
-  override def toString() = value.compactPrint
+  override def toString: String = value.compactPrint
 }

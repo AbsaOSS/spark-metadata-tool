@@ -25,8 +25,8 @@ package object spark_metadata_tool {
   val SparkMetadataDir = "_spark_metadata"
 
   implicit object HadoopPathJsonFormat extends RootJsonFormat[Path] {
-    def write(p: Path) = p.toString.toJson
-    def read(value: JsValue) = value match {
+    def write(p: Path): JsValue = p.toString.toJson
+    def read(value: JsValue): Path = value match {
       case JsString(path) => new Path(path)
       case _              => deserializationError(s"Expected path, got $value")
     }

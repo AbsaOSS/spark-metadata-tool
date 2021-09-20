@@ -26,6 +26,7 @@ import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownError
 
 object ArgumentParser {
+
   implicit val filesystemRead: scopt.Read[TargetFilesystem] = scopt.Read.reads {
     case "unix" => Unix
     case "hdfs" => Hdfs
@@ -34,13 +35,13 @@ object ArgumentParser {
   }
 
   implicit val hadoopPathRead: scopt.Read[Path] = scopt.Read.reads {
-    case s if !s.isEmpty => new Path(s)
+    case s if s.nonEmpty => new Path(s)
     case s               => throw new NoSuchElementException(s"$s is not a valid path")
   }
 
-  val builder = OParser.builder[AppConfig]
+  private val builder = OParser.builder[AppConfig]
 
-  val parser = {
+  private val parser = {
     import builder._
     OParser.sequence(
       programName("spark-metadata-tool"),

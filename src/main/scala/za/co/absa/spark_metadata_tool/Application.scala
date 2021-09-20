@@ -29,14 +29,14 @@ import za.co.absa.spark_metadata_tool.model.Unix
 object Application extends App {
 
   //TODO: proper error handling
-  run(args).leftMap(err => throw new RuntimeException(err.toString()))
+  run(args).leftMap(err => throw new RuntimeException(err.toString))
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args)
     metaPath          = new Path(s"${conf.path}/$SparkMetadataDir")
     filesToFix       <- io.listFiles(metaPath)
-    maybeKey         <- tool.getFirstPartitionKey(conf.path)
-    _                <- filesToFix.traverse(path => fixFile(path, tool, conf.path, maybeKey))
+    key              <- tool.getFirstPartitionKey(conf.path)
+    _                <- filesToFix.traverse(path => fixFile(path, tool, conf.path, key))
   } yield ()
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
