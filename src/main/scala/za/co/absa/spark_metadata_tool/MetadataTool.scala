@@ -48,7 +48,7 @@ class MetadataTool(io: FileManager) {
     * If the name of first partition key is provided, it splits the old paths on the key name and replaces the old base
     * path with provided new one. If a path that does not contain the key is found, returns error.
     *
-    * If no partition key is provided, it assumes paths do not contain any partitionins, in which case each old path is
+    * If no partition key is provided, it assumes paths do not contain any partitions, in which case each old path is
     * fully replaced by the new base path.
     *
     * If any JSON object contained in [[JsonLine]] doesn't contain a "path" key, error is returned.
@@ -84,7 +84,7 @@ class MetadataTool(io: FileManager) {
   /** Finds name of the top level partition, if it exists.
     *
     * Loads example path from random metadata file and compares it with names of directories in root folder. If root
-    * directory contais folder with name in form 'key=value' and such pair is found withing the loaded path, it is
+    * directory contains folder with name in form 'key=value' and such pair is found withing the loaded path, it is
     * considered to be the first partition.
     *
     * @param rootDirPath
@@ -145,13 +145,16 @@ class MetadataTool(io: FileManager) {
   } yield JsonLine(fixedLine)
 
   private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =
-    firstPartitionKey.fold(newBasePath.asRight: Either[AppError, Path]) { key =>
-      val fixed = new Path(oldPath.toString.replaceFirst(s".*/$key=", s"$newBasePath/$key="))
-      if (fixed.compareTo(oldPath) == 0)
-        NotFoundError(
-          s"Failed to fix path $oldPath! Couldn't split as partition key $key was not found in the path."
-        ).asLeft
-      else fixed.asRight
+    firstPartitionKey.fold(new Path(s"${newBasePath.toString}/${oldPath.getName}").asRight: Either[AppError, Path]) {
+      key =>
+        val fixed = new Path(oldPath.toString.replaceFirst(s".*/$key=", s"$newBasePath/$key="))
+        if (fixed.compareTo(oldPath) == 0) {
+          NotFoundError(
+            s"Failed to fix path $oldPath! Couldn't split as partition key $key was not found in the path."
+          ).asLeft
+        } else {
+          fixed.asRight
+        }
     }
 
 }
