@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -31,7 +32,7 @@ class MetadataTool(io: FileManager) {
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
     *
-    * Parses each line as either a [[String]] or [[JsObject]] and wraps the results into a [[Seq]] of [[FileLine]]
+    * Parses each line as either a String or JsObject and wraps the results into a Seq of FileLine
     *
     * @param path
     *   location of the file
@@ -51,9 +52,9 @@ class MetadataTool(io: FileManager) {
     * If no partition key is provided, it assumes paths do not contain any partitions, in which case each old path is
     * fully replaced by the new base path.
     *
-    * If any JSON object contained in [[JsonLine]] doesn't contain a "path" key, error is returned.
+    * If any JSON object doesn't contain a "path" key, error is returned.
     *
-    * Regular lines contained in [[StringLine]] are left untouched.
+    * Regular lines contained in StringLine are left untouched.
     *
     * @param data
     *   parsed lines of a single Spark structured streaming metadata file to be fixed
