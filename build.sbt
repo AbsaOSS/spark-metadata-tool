@@ -1,8 +1,50 @@
-import Dependencies._
+/*
+ * Copyright 2021 ABSA Group Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-ThisBuild / scalaVersion     := "2.13.6"
-ThisBuild / version          := "0.1.0-SNAPSHOT"
-ThisBuild / organization     := "za.co.absa"
+import Dependencies._
+import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
+
+ThisBuild / scalaVersion  := "2.13.6"
+ThisBuild / organization  := "za.co.absa"
+ThisBuild / versionScheme := Some("early-semver")
+
+Test / parallelExecution := false
+
+val mergeStrategy: Def.SettingsDefinition = assemblyMergeStrategy / assembly := {
+  case PathList("META-INF", _) => MergeStrategy.discard
+  case "application.conf"      => MergeStrategy.concat
+  case "reference.conf"        => MergeStrategy.concat
+  case _                       => MergeStrategy.first
+}
+
+releaseProcess := Seq[ReleaseStep](
+  checkSnapshotDependencies,
+  inquireVersions,
+  runClean,
+  runTest,
+  setReleaseVersion,
+  commitReleaseVersion,
+  tagRelease,
+  releaseStepCommand("publishLocalSigned"),
+  // releaseStepCommand("publishSigned"),
+  // releaseStepCommand("sonatypeBundleRelease"),
+  setNextVersion,
+  commitNextVersion,
+  pushChanges
+)
 
 lazy val root = (project in file("."))
   .settings(
@@ -10,11 +52,23 @@ lazy val root = (project in file("."))
     libraryDependencies ++= dependencies,
     semanticdbEnabled := true,                        // enable SemanticDB
     semanticdbVersion := scalafixSemanticdb.revision, // use Scalafix compatible version
-    addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
     scalacOptions ++= compilerOptions,
+    javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint"),
+    releaseVersionBump   := sbtrelease.Version.Bump.Minor,
+    assembly / mainClass := Some("za.co.absa.spark_metadata_tool.Application"),
+    assembly / test      := (Test / test).value,
+    mergeStrategy,
+    artifact in (Compile, assembly) := {
+      val art = (artifact in (Compile, assembly)).value
+      art.withClassifier(Some("assembly"))
+    },
+    addArtifact(artifact in (Compile, assembly), assembly)
   )
+  .enablePlugins(AutomateHeaderPlugin)
 
 val compilerOptions = Seq(
+  "-target:jvm-1.8",
   "-explaintypes",
   "-feature",
   "-language:existentials",
