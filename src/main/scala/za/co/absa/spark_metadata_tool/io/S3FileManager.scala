@@ -25,6 +25,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectResponse
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import za.co.absa.spark_metadata_tool.model.All
 import za.co.absa.spark_metadata_tool.model.Directory
 import za.co.absa.spark_metadata_tool.model.File
@@ -32,6 +33,7 @@ import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.FileType
 import za.co.absa.spark_metadata_tool.model.IoError
 
+import java.io.ByteArrayOutputStream
 import scala.io.Source
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -71,19 +73,27 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       .key(key)
       .build()
 
-    val requestBody = RequestBody.fromString(lines.mkString("\n"))
-
-    Try {
-      s3.putObject(objectRequest, requestBody)
-    }.toEither
-      .map(_ => ())
-      .leftMap(err => IoError(err.getMessage))
+    for {
+      bytes <- toBytes(lines)
+      _     <- put(objectRequest, RequestBody.fromBytes(bytes))
+    } yield ()
   }
 
   // lists only non-empty directories
   override def listDirectories(path: Path): Either[IoError, Seq[Path]] = listDir(path, Directory)
 
   override def listFiles(path: Path): Either[IoError, Seq[Path]] = listDir(path, File)
+
+  private def toBytes(lines: Seq[FileLine]): Either[IoError, Array[Byte]] =
+    Using(new ByteArrayOutputStream()) { stream =>
+      lines.foreach(l => stream.write(l.toString.getBytes))
+      stream.toByteArray
+    }.toEither.leftMap(err => IoError(err.getMessage))
+
+  private def put(request: PutObjectRequest, body: RequestBody): Either[IoError, PutObjectResponse] =
+    Try {
+      s3.putObject(request, body)
+    }.toEither.leftMap(err => IoError(err.getMessage))
 
   private def getFileStream(
     getObjectRequest: GetObjectRequest

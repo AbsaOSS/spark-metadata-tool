@@ -31,7 +31,7 @@ import za.co.absa.spark_metadata_tool.model.Unix
 object Application extends App {
 
   //TODO: proper error handling
-  run(args).leftMap(err => throw new RuntimeException(err.toString()))
+  run(args).leftMap(err => throw new RuntimeException(err.toString))
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args)
