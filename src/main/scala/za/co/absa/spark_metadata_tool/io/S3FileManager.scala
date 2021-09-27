@@ -88,24 +88,24 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     Using(new ByteArrayOutputStream()) { stream =>
       lines.foreach(l => stream.write(l.toString.getBytes))
       stream.toByteArray
-    }.toEither.leftMap(err => IoError(err.getMessage))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
   private def put(request: PutObjectRequest, body: RequestBody): Either[IoError, PutObjectResponse] =
     Try {
       s3.putObject(request, body)
-    }.toEither.leftMap(err => IoError(err.getMessage))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
   private def getFileStream(
     getObjectRequest: GetObjectRequest
   ): Either[IoError, ResponseInputStream[GetObjectResponse]] =
     Try {
       s3.getObject(getObjectRequest, ResponseTransformer.toInputStream()): ResponseInputStream[GetObjectResponse]
-    }.toEither.leftMap(err => IoError(err.getMessage))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
   private def parseFileStream(stream: ResponseInputStream[GetObjectResponse]): Either[IoError, Seq[String]] =
     Using(Source.fromInputStream(stream)) { src =>
       src.getLines().toSeq
-    }.toEither.leftMap(err => IoError(err.getMessage))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
   private def listDir(path: Path, filter: FileType): Either[IoError, Seq[Path]] = {
     val bucket  = getBucket(path)
@@ -125,7 +125,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
                  .map(_.split("/"))
                  .filter(p => filterPredicate(p.length))
                  .traverse(_.headOption)
-                 .toRight(IoError(s"Splitting paths $suffixes with delimiter '/' returned empty arrays"))
+                 .toRight(IoError(s"Splitting paths $suffixes with delimiter '/' returned empty arrays", None))
     } yield names.distinct.map(n => new Path(s"$path/$n"))
   }
 
@@ -138,7 +138,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     val res = s3.listObjectsV2(req)
 
     res.contents.asScala.map(o => new Path(o.key)).toSeq
-  }.toEither.leftMap(err => IoError(err.getMessage))
+  }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
   private def getBucket(path: Path): String = path.toUri.getHost
 }
