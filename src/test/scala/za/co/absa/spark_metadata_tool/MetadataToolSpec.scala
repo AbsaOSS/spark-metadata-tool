@@ -62,7 +62,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   it should "return underlying error if the file couldn't be loaded" in {
     val path = createPath(s3BaseString, s"$SparkMetadataDir".some, "1".some)
-    val err  = IoError(s"Path $path does not exist")
+    val err  = IoError(s"Path $path does not exist", None)
 
     (fileManager.readAllLines _).expects(path).returning(err.asLeft)
 
@@ -73,7 +73,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   "saveFile" should "return underlying error in case of failure" in {
     val path = createPath(s3BaseString, s"$SparkMetadataDir".some, "1".some)
-    val err  = IoError(s"Failed to write file to $path")
+    val err  = IoError(s"Failed to write file to $path", None)
 
     (fileManager.write _).expects(path, *).returning(err.asLeft)
 
