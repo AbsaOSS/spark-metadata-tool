@@ -86,7 +86,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   private def toBytes(lines: Seq[FileLine]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>
-      lines.foreach(l => stream.write(l.toString.getBytes))
+      lines.foreach(l => stream.write(s"${l.toString}\n".getBytes))
       stream.toByteArray
     }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
