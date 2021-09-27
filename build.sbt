@@ -11,7 +11,6 @@ lazy val root = (project in file("."))
     semanticdbEnabled := true,                        // enable SemanticDB
     semanticdbVersion := scalafixSemanticdb.revision, // use Scalafix compatible version
     addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
-    Compile / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.Flat,
     scalacOptions ++= compilerOptions,
   )
 
