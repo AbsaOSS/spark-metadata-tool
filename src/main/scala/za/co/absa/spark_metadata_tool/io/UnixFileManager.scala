@@ -37,13 +37,13 @@ case object UnixFileManager extends FileManager {
 
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = Using(Source.fromFile(path.toString)) { src =>
     src.getLines().toSeq
-  }.fold(err => Left(IoError(err.getMessage)), lines => Right(lines))
+  }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), lines => Right(lines))
 
   // overwrites by default
   override def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit] =
     Using(new PrintWriter(new FileOutputStream(new File(path.toString)))) { writer =>
       writer.write(lines.mkString("\n"))
-    }.fold(err => Left(IoError(err.getMessage)), _ => Right(()))
+    }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), _ => Right(()))
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)
@@ -51,15 +51,15 @@ case object UnixFileManager extends FileManager {
     checkDirectoryExists(dir) match {
       case Right(true) =>
         Try(dir.listFiles()).fold(
-          err => IoError(err.getMessage).asLeft,
+          err => IoError(err.getMessage, err.getStackTrace.toSeq.some).asLeft,
           files => files.toSeq.asRight
         )
-      case Right(false) => IoError(s"$path does not exist or is not a directory").asLeft
+      case Right(false) => IoError(s"$path does not exist or is not a directory", None).asLeft
       case Left(error)  => error.asLeft
     }
   }
 
   private def checkDirectoryExists(directory: File): Either[IoError, Boolean] = Try {
     directory.exists && directory.isDirectory
-  }.fold(err => Left(IoError(err.getMessage)), res => Right(res))
+  }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), res => Right(res))
 }
