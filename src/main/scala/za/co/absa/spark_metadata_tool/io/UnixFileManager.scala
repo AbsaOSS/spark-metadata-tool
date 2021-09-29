@@ -17,7 +17,6 @@ package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.io.File
@@ -40,7 +39,7 @@ case object UnixFileManager extends FileManager {
   }.fold(err => Left(IoError(err.getMessage)), lines => Right(lines))
 
   // overwrites by default
-  override def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit] =
+  override def write(path: Path, lines: Seq[String]): Either[IoError, Unit] =
     Using(new PrintWriter(new FileOutputStream(new File(path.toString)))) { writer =>
       writer.write(lines.mkString("\n"))
     }.fold(err => Left(IoError(err.getMessage)), _ => Right(()))

@@ -16,12 +16,11 @@
 package za.co.absa.spark_metadata_tool.io
 
 import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.IoError
 
 trait FileManager {
   def listFiles(path: Path): Either[IoError, Seq[Path]]
   def listDirectories(path: Path): Either[IoError, Seq[Path]]
   def readAllLines(path: Path): Either[IoError, Seq[String]]
-  def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit]
+  def write(path: Path, lines: Seq[String]): Either[IoError, Unit]
 }

@@ -16,8 +16,9 @@
 package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.hadoop.fs.Path
-import spray.json._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.FileLine
@@ -25,9 +26,13 @@ import za.co.absa.spark_metadata_tool.model.JsonLine
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
 
+import scala.collection.immutable.ListMap
 import scala.util.Try
 
 class MetadataTool(io: FileManager) {
+
+  private implicit val mapper = new ObjectMapper
+  mapper.registerModule(DefaultScalaModule)
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
     *
@@ -79,7 +84,7 @@ class MetadataTool(io: FileManager) {
     * @return
     *   Unit or an error
     */
-  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data)
+  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data.map(FileLine.write))
 
   /** Finds name of the top level partition, if it exists.
     *
@@ -108,14 +113,14 @@ class MetadataTool(io: FileManager) {
               .find(!_.getName.endsWith("compact"))
               .toRight(NotFoundError(s"Couldn't find standard metadata file to load in $metaFiles"))
     parsed <- loadFile(file)
-    json <- parsed.collectFirst { case l: JsonLine =>
-              l.value.fields.get("path").toRight(NotFoundError(s"Couldn't find path in JSON line $l"))
-            }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
-    path <- json.map(_.convertTo[Path])
+    pathString <- parsed.collectFirst { case l: JsonLine =>
+                    l.fields.get("path").toRight(NotFoundError(s"Couldn't find path in JSON line ${FileLine.write(l)}"))
+                  }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
+    path <- pathString.map(new Path(_))
   } yield path
 
   private def parseLine(line: String): FileLine =
-    Try(line.parseJson.asJsObject).fold(_ => StringLine(line), json => JsonLine(json))
+    Try(mapper.readValue(line, classOf[ListMap[String, String]])).fold(_ => StringLine(line), json => JsonLine(json))
 
   private def processLine(
     line: FileLine,
@@ -131,17 +136,22 @@ class MetadataTool(io: FileManager) {
     newBasePath: Path,
     firstPartitionKey: Option[String]
   ): Either[AppError, JsonLine] = for {
-    oldPath <- line.value.fields
-                 .get("path")
-                 .fold(NotFoundError(s"Couldn't find key 'path' in $line").asLeft: Either[NotFoundError, Path])(
-                   _.convertTo[Path].asRight
-                 )
+    oldPath <-
+      line.fields
+        .get("path")
+        .fold(
+          NotFoundError(s"Couldn't find path in JSON line ${FileLine.write(line)}").asLeft: Either[NotFoundError, Path]
+        )(
+          new Path(_).asRight
+        )
     newPath <- fixPath(
                  oldPath,
                  newBasePath,
                  firstPartitionKey
                )
-    fixedLine = line.value.copy(fields = line.value.fields + ("path" -> newPath.toJson))
+    fixedLine: ListMap[String, String] = line.fields.map { case (k, v) =>
+                                           if (k == "path") (k, newPath.toString) else (k, v)
+                                         }
   } yield JsonLine(fixedLine)
 
   private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =

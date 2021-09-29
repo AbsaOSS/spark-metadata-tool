@@ -15,13 +15,18 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-import spray.json.JsObject
+import com.fasterxml.jackson.databind.ObjectMapper
+
+import scala.collection.immutable.ListMap
 
 sealed trait FileLine
 
-case class StringLine(value: String) extends FileLine {
-  override def toString: String = value
+object FileLine {
+  def write(line: FileLine)(implicit mapper: ObjectMapper): String = line match {
+    case line: StringLine => line.value
+    case line: JsonLine   => mapper.writeValueAsString(line.fields)
+  }
 }
-case class JsonLine(value: JsObject) extends FileLine {
-  override def toString: String = value.compactPrint
-}
+
+case class StringLine(value: String)                 extends FileLine
+case class JsonLine(fields: ListMap[String, String]) extends FileLine

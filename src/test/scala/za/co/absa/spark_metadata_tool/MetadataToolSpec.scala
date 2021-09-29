@@ -16,19 +16,22 @@
 package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.hadoop.fs.Path
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.EitherValues
 import org.scalatest.OptionValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import spray.json._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.IoError
 import za.co.absa.spark_metadata_tool.model.JsonLine
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
+
+import scala.collection.immutable.ListMap
 
 import MetadataToolSpec._
 
@@ -44,7 +47,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     (fileManager.readAllLines _).expects(*).returning(Seq(line).asRight)
 
     val res                     = metadataTool.loadFile(s3BasePath)
-    val expected: Seq[FileLine] = Seq(JsonLine(line.parseJson.asJsObject))
+    val expected: Seq[FileLine] = Seq(JsonLine(mapper.readValue(line, classOf[ListMap[String, String]])))
 
     res.value should contain theSameElementsAs expected
   }
@@ -109,7 +112,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val corruptedPath =
       createPath(hdfsBaseString, createPartitions("differentKey", "value1").some, "testFile.parquet".some)
     val data: Seq[FileLine] = stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(
-      JsonLine(validLine(corruptedPath).parseJson.asJsObject)
+      JsonLine(mapper.readValue(validLine(corruptedPath), classOf[ListMap[String, String]]))
     )
     val expected = NotFoundError(
       s"Failed to fix path $corruptedPath! Couldn't split as partition key $firstPartKey was not found in the path."
@@ -122,10 +125,10 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   it should "fail if any JSON line doesn't contain 'path' key" in {
     val numLines      = 10
-    val corruptedLine = JsonLine(lineNoPath.parseJson.asJsObject)
+    val corruptedLine = JsonLine(mapper.readValue(lineNoPath, classOf[ListMap[String, String]]))
     val data: Seq[FileLine] =
       stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(corruptedLine)
-    val expected = NotFoundError(s"Couldn't find key 'path' in $corruptedLine")
+    val expected = NotFoundError(s"Couldn't find path in JSON line ${FileLine.write(corruptedLine)(mapper)}")
 
     val res = metadataTool.fixPaths(data, s3BasePath, firstPartKey.some)
 
@@ -143,7 +146,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _).expects(*).returning(testFile.map(FileLine.write(_)(mapper)).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -160,7 +163,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _).expects(*).returning(testFile.map(FileLine.write(_)(mapper)).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -192,7 +195,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(testFilePath).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _).expects(testFilePath).returning(testFile.map(FileLine.write(_)(mapper)).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -202,14 +205,14 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   it should "fail when there's JSON with missing 'path' key" in {
     val path         = s3BasePath
     val metadataPath = createPath(s3BaseString, s"$SparkMetadataDir".some, None)
-    val testFile     = stringLines ++ Seq(JsonLine(lineNoPath.parseJson.asJsObject))
+    val testFile     = stringLines ++ Seq(JsonLine(mapper.readValue(lineNoPath, classOf[ListMap[String, String]])))
     val expected     = NotFoundError(s"Couldn't find path in JSON line $lineNoPath")
 
     (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _).expects(*).returning(testFile.map(FileLine.write(_)(mapper)).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -219,6 +222,9 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 }
 
 object MetadataToolSpec {
+  val mapper = new ObjectMapper
+  mapper.registerModule(DefaultScalaModule)
+
   val firstPartKey   = "key1"
   val hdfsBaseString = "hdfs://path/to/root/dir"
   val hdfsBasePath   = createPath(hdfsBaseString, None, None)
@@ -246,7 +252,7 @@ object MetadataToolSpec {
              firstPartKey.map(key => createPartitions(key, s"value${value.toString}")),
              s"testFile${value.toString}.parquet".some
            )
-  } yield JsonLine(validLine(path).parseJson.asJsObject)
+  } yield JsonLine(mapper.readValue(validLine(path), classOf[ListMap[String, String]]))
 
   val mixedDirs = Seq(
     createPath(s3BaseString, s"$SparkMetadataDir".some, None),
