@@ -21,9 +21,13 @@ import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest
+import software.amazon.awssdk.services.s3.model.Delete
+import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectResponse
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import za.co.absa.spark_metadata_tool.model.All
@@ -41,9 +45,39 @@ import scala.util.Using
 
 case class S3FileManager(s3: S3Client) extends FileManager {
 
+  override def copy(from: Path, to: Path): Either[IoError, Unit] = Try {
+    val bucket  = getBucket(from)
+    val srcKey  = getKey(from, bucket)
+    val destKey = getKey(to, bucket)
+
+    val request = CopyObjectRequest
+      .builder()
+      .sourceBucket(bucket)
+      .sourceKey(srcKey)
+      .destinationBucket(bucket)
+      .destinationKey(destKey)
+      .build()
+
+    s3.copyObject(request)
+
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+
+  def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
+    val bucket = getBucket(
+      paths.headOption.getOrElse(throw new IllegalArgumentException("Empty list of paths to delete"))
+    ) //TODO: use NEL
+    val keys = paths.map(p => ObjectIdentifier.builder().key(getKey(p, bucket)).build())
+
+    val del = Delete.builder().objects(keys: _*).quiet(false).build()
+    val req = DeleteObjectsRequest.builder().bucket(bucket).delete(del).build()
+
+    s3.deleteObjects(req)
+
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = {
     val bucket = getBucket(path)
-    val key    = path.toString.stripPrefix(s"s3://$bucket/")
+    val key    = getKey(path, bucket)
 
     val getObjectRequest = GetObjectRequest
       .builder()
@@ -65,7 +99,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   override def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit] = {
     val bucket = getBucket(path)
-    val key    = path.toString.stripPrefix(s"s3://$bucket/")
+    val key    = getKey(path, bucket)
 
     val objectRequest = PutObjectRequest
       .builder()
@@ -109,7 +143,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   private def listDir(path: Path, filter: FileType): Either[IoError, Seq[Path]] = {
     val bucket  = getBucket(path)
-    val rootKey = path.toString.stripPrefix(s"s3://$bucket/")
+    val rootKey = getKey(path, bucket)
 
     val filterPredicate: Int => Boolean = filter match {
       case All       => _ => true
@@ -140,5 +174,6 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     res.contents.asScala.map(o => new Path(o.key)).toSeq
   }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
-  private def getBucket(path: Path): String = path.toUri.getHost
+  private def getBucket(path: Path): String              = path.toUri.getHost
+  private def getKey(path: Path, bucket: String): String = path.toString.stripPrefix(s"s3://$bucket/")
 }

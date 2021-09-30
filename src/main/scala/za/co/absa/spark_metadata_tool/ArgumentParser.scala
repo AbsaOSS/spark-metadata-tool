@@ -53,7 +53,10 @@ object ArgumentParser {
       opt[TargetFilesystem]('f', "filesystem")
         .required()
         .action((x, c) => c.copy(filesystem = x))
-        .text("unix/hdfs/s3")
+        .text("unix/hdfs/s3"),
+      opt[Boolean]('k', "keep-backup")
+        .action((x, c) => c.copy(keepBackup = x))
+        .text("keep backup")
     )
   }
 
@@ -62,8 +65,9 @@ object ArgumentParser {
       parser,
       args,
       AppConfig(
-        new Path("default"),
-        Unix
+        path = new Path("default"),
+        filesystem = Unix,
+        keepBackup = false
       )
     )
 
