@@ -118,9 +118,8 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     }
 
     for {
-      keys     <- listBucket(bucket)
-      inRoot   <- keys.filter(_.toString.startsWith(rootKey)).asRight
-      suffixes <- inRoot.map(_.toString.stripPrefix(s"$rootKey/")).asRight
+      keys     <- listBucket(bucket, rootKey.some)
+      suffixes <- keys.map(_.toString.stripPrefix(s"$rootKey/")).asRight
       names <- suffixes
                  .map(_.split("/"))
                  .filter(p => filterPredicate(p.length))
@@ -129,10 +128,11 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     } yield names.distinct.map(n => new Path(s"$path/$n"))
   }
 
-  private def listBucket(bucketName: String): Either[IoError, Seq[Path]] = Try {
+  private def listBucket(bucketName: String, prefix: Option[String]): Either[IoError, Seq[Path]] = Try {
     val req = ListObjectsV2Request
       .builder()
       .bucket(bucketName)
+      .prefix(prefix.getOrElse(""))
       .build()
 
     val res = s3.listObjectsV2(req)
