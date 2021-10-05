@@ -46,7 +46,6 @@ releaseProcess := Seq[ReleaseStep](
 
 lazy val root = (project in file("."))
   .settings(
-    name := "spark-metadata-tool",
     libraryDependencies ++= dependencies,
     semanticdbEnabled := true,                        // enable SemanticDB
     semanticdbVersion := scalafixSemanticdb.revision, // use Scalafix compatible version
@@ -61,9 +60,17 @@ lazy val root = (project in file("."))
       val art = (assembly / artifact).value
       art.withClassifier(Some("assembly"))
     },
-    addArtifact (assembly / artifact, assembly)
+    addArtifact(assembly / artifact, assembly),
+    publish / skip := true
   )
   .enablePlugins(AutomateHeaderPlugin)
+
+// Dummy project to hide fat jar dependencies
+lazy val publishing = project
+  .settings(
+    name                 := "spark-metadata-tool",
+    Compile / packageBin := (root / assembly).value
+  )
 
 val compilerOptions = Seq(
   "-target:jvm-1.8",
