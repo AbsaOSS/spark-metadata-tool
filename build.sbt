@@ -23,7 +23,7 @@ ThisBuild / versionScheme := Some("early-semver")
 
 Test / parallelExecution := false
 
-val mergeStrategy: Def.SettingsDefinition = assemblyMergeStrategy in assembly := {
+val mergeStrategy: Def.SettingsDefinition = assembly / assemblyMergeStrategy := {
   case PathList("META-INF", _) => MergeStrategy.discard
   case "application.conf"      => MergeStrategy.concat
   case "reference.conf"        => MergeStrategy.concat
@@ -57,11 +57,11 @@ lazy val root = (project in file("."))
     assembly / mainClass := Some("za.co.absa.spark_metadata_tool.Application"),
     assembly / test      := (Test / test).value,
     mergeStrategy,
-    artifact in (Compile, assembly) := {
-      val art = (artifact in (Compile, assembly)).value
+    assembly / artifact := {
+      val art = (assembly / artifact).value
       art.withClassifier(Some("assembly"))
     },
-    addArtifact(artifact in (Compile, assembly), assembly)
+    addArtifact (assembly / artifact, assembly)
   )
   .enablePlugins(AutomateHeaderPlugin)
 
