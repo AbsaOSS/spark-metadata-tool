@@ -38,9 +38,7 @@ releaseProcess := Seq[ReleaseStep](
   setReleaseVersion,
   commitReleaseVersion,
   tagRelease,
-  releaseStepCommand("publishLocalSigned"),
-  // releaseStepCommand("publishSigned"),
-  // releaseStepCommand("sonatypeBundleRelease"),
+  releaseStepCommand("publishSigned"),
   setNextVersion,
   commitNextVersion,
   pushChanges
