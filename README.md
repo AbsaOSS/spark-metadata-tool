@@ -10,11 +10,13 @@ Artifacts are published into [GitHub Packages Apache Maven registry](https://doc
 To publish a package, you will need Personal Access Token with `read: package` and `write: package` permissions, stored in environment variable `GITHUB_TOKEN`.
 For other ways to provide PAT, see [sbt-github-packages](https://github.com/djspiewak/sbt-github-packages) plugin page.
 
-You can then create a new release by running
+- To create new release, checkout new release branch and push it to remote.
+Then switch to SBT project `publishing` and run `release` Task:
 ```
 sbt "project publishing" release
 ```
-or simply publish current version of the artifact by running
+
+- To simply publish current version of the artifact, run
 ```
 sbt "project publishing" publishSigned
 ```
