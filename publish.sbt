@@ -37,5 +37,3 @@ ThisBuild / homepage := Some(url("https://github.com/AbsaOSS/spark-metadata-tool
 ThisBuild / description := "A tool for fixing Spark Structured Streaming metadata files"
 ThisBuild / startYear := Some(2021)
 ThisBuild / licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.txt")
-ThisBuild / githubOwner := "AbsaOSS"
-ThisBuild / githubRepository := "spark-metadata-tool"

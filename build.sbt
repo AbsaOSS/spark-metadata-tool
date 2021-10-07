@@ -17,9 +17,11 @@
 import Dependencies._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
-ThisBuild / scalaVersion  := "2.13.6"
-ThisBuild / organization  := "za.co.absa"
-ThisBuild / versionScheme := Some("early-semver")
+ThisBuild / scalaVersion     := "2.13.6"
+ThisBuild / organization     := "za.co.absa"
+ThisBuild / versionScheme    := Some("early-semver")
+ThisBuild / githubOwner      := "AbsaOSS"
+ThisBuild / githubRepository := "spark-metadata-tool"
 
 Test / parallelExecution := false
 
@@ -61,7 +63,8 @@ lazy val root = (project in file("."))
       art.withClassifier(Some("assembly"))
     },
     addArtifact(assembly / artifact, assembly),
-    publish / skip := true
+    publish / skip := true,
+    patSettings
   )
   .enablePlugins(AutomateHeaderPlugin)
 
@@ -69,8 +72,14 @@ lazy val root = (project in file("."))
 lazy val publishing = project
   .settings(
     name                 := "spark-metadata-tool",
-    Compile / packageBin := (root / assembly).value
+    Compile / packageBin := (root / assembly).value,
+    patSettings
   )
+
+val patSettings = githubTokenSource := TokenSource.Or(
+  TokenSource.Environment("GITHUB_TOKEN"), // Required for publishing
+  TokenSource.Environment("SHELL")         // Used to bypass PAT eager resolution for local development
+)
 
 val compilerOptions = Seq(
   "-target:jvm-1.8",
