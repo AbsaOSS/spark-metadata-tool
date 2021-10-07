@@ -1,6 +1,7 @@
 # idea
 .idea
 *.iml
+.bsp/sbt.json
 
 # building
 target
