@@ -150,13 +150,14 @@ class MetadataTool(io: FileManager) {
   private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =
     firstPartitionKey.fold(new Path(s"${newBasePath.toString}/${oldPath.getName}").asRight: Either[AppError, Path]) {
       key =>
-        val fixed = new Path(oldPath.toString.replaceFirst(s".*/$key=", s"$newBasePath/$key="))
-        if (fixed.compareTo(oldPath) == 0) {
+        val old   = oldPath.toString
+        val fixed = old.replaceFirst(s".*/$key=", s"$newBasePath/$key=")
+        if (fixed == old && !old.startsWith(newBasePath.toString)) {
           NotFoundError(
             s"Failed to fix path $oldPath! Couldn't split as partition key $key was not found in the path."
           ).asLeft
         } else {
-          fixed.asRight
+          new Path(fixed).asRight
         }
     }
 

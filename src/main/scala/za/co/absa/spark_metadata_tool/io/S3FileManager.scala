@@ -113,10 +113,9 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     } yield ()
   }
 
-  // lists only non-empty directories
-  override def listDirectories(path: Path): Either[IoError, Seq[Path]] = listDir(path, Directory)
+  override def listDirectories(path: Path): Either[IoError, Seq[Path]] = listBucket(path, Directory)
 
-  override def listFiles(path: Path): Either[IoError, Seq[Path]] = listDir(path, File)
+  override def listFiles(path: Path): Either[IoError, Seq[Path]] = listBucket(path, File)
 
   private def toBytes(lines: Seq[FileLine]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>
@@ -141,39 +140,30 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       src.getLines().toSeq
     }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
-  private def listDir(path: Path, filter: FileType): Either[IoError, Seq[Path]] = {
-    val bucket  = getBucket(path)
-    val rootKey = getKey(path, bucket)
+  private def listBucket(path: Path, filter: FileType): Either[IoError, Seq[Path]] = Try {
+    val bucket     = getBucket(path)
+    val pathPrefix = s"s3://$bucket/"
+    val rootKey    = path.toString.stripPrefix(pathPrefix)
 
-    val filterPredicate: Int => Boolean = filter match {
-      case All       => _ => true
-      case Directory => _ > 1  // e.g. "directory/some.file".split("/") = ("directory", "some.file")
-      case File      => _ == 1 // e.g. "some.file".split("/") = ("some.file")
-    }
-
-    for {
-      keys     <- listBucket(bucket)
-      inRoot   <- keys.filter(_.toString.startsWith(rootKey)).asRight
-      suffixes <- inRoot.map(_.toString.stripPrefix(s"$rootKey/")).asRight
-      names <- suffixes
-                 .map(_.split("/"))
-                 .filter(p => filterPredicate(p.length))
-                 .traverse(_.headOption)
-                 .toRight(IoError(s"Splitting paths $suffixes with delimiter '/' returned empty arrays", None))
-    } yield names.distinct.map(n => new Path(s"$path/$n"))
-  }
-
-  private def listBucket(bucketName: String): Either[IoError, Seq[Path]] = Try {
     val req = ListObjectsV2Request
       .builder()
-      .bucket(bucketName)
+      .bucket(bucket)
+      .prefix(s"$rootKey/")
+      .delimiter("/")
       .build()
 
     val res = s3.listObjectsV2(req)
 
-    res.contents.asScala.map(o => new Path(o.key)).toSeq
+    lazy val files = res.contents.asScala.map(f => new Path(s"$pathPrefix${f.key}"))
+    lazy val dirs  = res.commonPrefixes.asScala.map(d => new Path(s"$pathPrefix${d.prefix}"))
+
+    filter match {
+      case File      => files.toSeq
+      case Directory => dirs.toSeq
+      case All       => (files ++ dirs).toSeq
+    }
   }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
-  private def getBucket(path: Path): String              = path.toUri.getHost
+  private def getBucket(path: Path): String = path.toUri.getHost
   private def getKey(path: Path, bucket: String): String = path.toString.stripPrefix(s"s3://$bucket/")
 }
