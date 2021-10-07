@@ -62,7 +62,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
-  def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
+  override def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
     val bucket = getBucket(
       paths.headOption.getOrElse(throw new IllegalArgumentException("Empty list of paths to delete"))
     ) //TODO: use NEL
@@ -164,6 +164,6 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     }
   }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
-  private def getBucket(path: Path): String = path.toUri.getHost
+  private def getBucket(path: Path): String              = path.toUri.getHost
   private def getKey(path: Path, bucket: String): String = path.toString.stripPrefix(s"s3://$bucket/")
 }
