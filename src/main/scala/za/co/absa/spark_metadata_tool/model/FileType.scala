@@ -14,17 +14,10 @@
  * limitations under the License.
  */
 
-package za.co.absa.spark_metadata_tool.io
+package za.co.absa.spark_metadata_tool.model
 
-import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.FileLine
-import za.co.absa.spark_metadata_tool.model.IoError
+sealed trait FileType
 
-trait FileManager {
-  def listFiles(path: Path): Either[IoError, Seq[Path]]
-  def listDirectories(path: Path): Either[IoError, Seq[Path]]
-  def readAllLines(path: Path): Either[IoError, Seq[String]]
-  def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit]
-  def copy(from: Path, to: Path): Either[IoError, Unit]
-  def delete(paths: Seq[Path]): Either[IoError, Unit]
-}
+case object File      extends FileType
+case object Directory extends FileType
+case object All       extends FileType
