@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-sbt:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: placeholder
+    strategy:
+      fail-fast: false
+    name: SBT Test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - uses: coursier/cache-action@v5
+      - name: Setup Scala
+        uses: olafurpg/setup-scala@v10
+        with:
+          java-version: "adopt@1.8"
+      - name: Build and run tests
+        run: sbt test
