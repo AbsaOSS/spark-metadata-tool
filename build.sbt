@@ -26,10 +26,8 @@ ThisBuild / githubRepository := "spark-metadata-tool"
 Test / parallelExecution := false
 
 val mergeStrategy: Def.SettingsDefinition = assembly / assemblyMergeStrategy := {
-  case PathList("META-INF", _) => MergeStrategy.discard
-  case "application.conf"      => MergeStrategy.concat
-  case "reference.conf"        => MergeStrategy.concat
-  case _                       => MergeStrategy.first
+  case "META-INF/io.netty.versions.properties" => MergeStrategy.concat
+  case other: Any => MergeStrategy.defaultMergeStrategy(other) 
 }
 
 releaseProcess := Seq[ReleaseStep](
