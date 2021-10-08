@@ -101,6 +101,9 @@ class MetadataTool(io: FileManager) {
     key                 <- firstPartition.flatMap(_.split("=").headOption).asRight
   } yield key
 
+  def backupFile(path: Path): Either[AppError, Unit] =
+    io.copy(path, new Path(path.toString.replaceFirst(SparkMetadataDir, BackupDir)))
+
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
     metaFiles <- io.listFiles(path)
     // avoid loading .compact files due to their potential size

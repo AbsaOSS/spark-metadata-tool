@@ -24,4 +24,6 @@ trait FileManager {
   def listDirectories(path: Path): Either[IoError, Seq[Path]]
   def readAllLines(path: Path): Either[IoError, Seq[String]]
   def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit]
+  def copy(from: Path, to: Path): Either[IoError, Unit]
+  def delete(paths: Seq[Path]): Either[IoError, Unit]
 }

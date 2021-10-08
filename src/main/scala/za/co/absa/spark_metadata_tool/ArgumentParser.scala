@@ -44,6 +44,10 @@ object ArgumentParser {
       opt[Path]('p', "path")
         .required()
         .action((x, c) => c.copy(path = x))
+        .text("path text"),
+      opt[Boolean]('k', "keep-backup")
+        .action((x, c) => c.copy(keepBackup = x))
+        .text("keep backup")
         .text("path text")
     )
   }
@@ -53,8 +57,9 @@ object ArgumentParser {
       parser,
       args,
       AppConfig(
-        new Path("default"),
-        Unix
+        path = new Path("default"),
+        filesystem = Unix,
+        keepBackup = false
       )
     )
 

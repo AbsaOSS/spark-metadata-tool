@@ -45,6 +45,10 @@ case object UnixFileManager extends FileManager {
       writer.write(lines.mkString("\n"))
     }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), _ => Right(()))
 
+  override def copy(origin: Path, destination: Path): Either[IoError, Unit] = ().asRight //TODO: Add implementation
+
+  override def delete(paths: Seq[Path]): Either[IoError, Unit] = ().asRight //TODO: Add implementation
+
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)
 

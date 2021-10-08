@@ -23,6 +23,7 @@ import DefaultJsonProtocol._
 package object spark_metadata_tool {
 
   val SparkMetadataDir = "_spark_metadata"
+  val BackupDir        = "_spark_metadata_backup"
 
   implicit object HadoopPathJsonFormat extends RootJsonFormat[Path] {
     def write(p: Path): JsValue = p.toString.toJson

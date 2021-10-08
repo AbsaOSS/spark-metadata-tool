@@ -19,5 +19,6 @@ import org.apache.hadoop.fs.Path
 
 final case class AppConfig(
   path: Path,
-  filesystem: TargetFilesystem
+  filesystem: TargetFilesystem,
+  keepBackup: Boolean
 )
