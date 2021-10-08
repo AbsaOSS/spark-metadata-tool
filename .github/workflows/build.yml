@@ -9,6 +9,8 @@ on:
 jobs:
   test-sbt:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: placeholder
     strategy:
       fail-fast: false
     name: SBT Test
