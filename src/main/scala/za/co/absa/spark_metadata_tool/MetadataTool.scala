@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -36,7 +37,7 @@ class MetadataTool(io: FileManager) {
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
     *
-    * Parses each line as either a [[String]] or [[JsObject]] and wraps the results into a [[Seq]] of [[FileLine]]
+    * Parses each line as either a String or JsObject and wraps the results into a Seq of FileLine
     *
     * @param path
     *   location of the file
@@ -56,9 +57,9 @@ class MetadataTool(io: FileManager) {
     * If no partition key is provided, it assumes paths do not contain any partitions, in which case each old path is
     * fully replaced by the new base path.
     *
-    * If any JSON object contained in [[JsonLine]] doesn't contain a "path" key, error is returned.
+    * If any JSON object doesn't contain a "path" key, error is returned.
     *
-    * Regular lines contained in [[StringLine]] are left untouched.
+    * Regular lines contained in StringLine are left untouched.
     *
     * @param data
     *   parsed lines of a single Spark structured streaming metadata file to be fixed
@@ -105,6 +106,9 @@ class MetadataTool(io: FileManager) {
     firstPartition      <- partitionCandidates.find(dir => testPath.toString.contains(dir)).asRight
     key                 <- firstPartition.flatMap(_.split("=").headOption).asRight
   } yield key
+
+  def backupFile(path: Path): Either[AppError, Unit] =
+    io.copy(path, new Path(path.toString.replaceFirst(SparkMetadataDir, BackupDir)))
 
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
     metaFiles <- io.listFiles(path)
@@ -157,13 +161,14 @@ class MetadataTool(io: FileManager) {
   private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =
     firstPartitionKey.fold(new Path(s"${newBasePath.toString}/${oldPath.getName}").asRight: Either[AppError, Path]) {
       key =>
-        val fixed = new Path(oldPath.toString.replaceFirst(s".*/$key=", s"$newBasePath/$key="))
-        if (fixed.compareTo(oldPath) == 0) {
+        val old   = oldPath.toString
+        val fixed = old.replaceFirst(s".*/$key=", s"$newBasePath/$key=")
+        if (fixed == old && !old.startsWith(newBasePath.toString)) {
           NotFoundError(
             s"Failed to fix path $oldPath! Couldn't split as partition key $key was not found in the path."
           ).asLeft
         } else {
-          fixed.asRight
+          new Path(fixed).asRight
         }
     }
 

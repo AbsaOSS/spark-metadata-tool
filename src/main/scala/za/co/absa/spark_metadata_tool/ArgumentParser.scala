@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -15,6 +16,7 @@
 
 package za.co.absa.spark_metadata_tool
 
+import cats.implicits._
 import org.apache.hadoop.fs.Path
 import scopt.OParser
 import za.co.absa.spark_metadata_tool.model.AppConfig
@@ -24,15 +26,9 @@ import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownError
+import za.co.absa.spark_metadata_tool.model.UnknownFileSystemError
 
 object ArgumentParser {
-
-  implicit val filesystemRead: scopt.Read[TargetFilesystem] = scopt.Read.reads {
-    case "unix" => Unix
-    case "hdfs" => Hdfs
-    case "s3"   => S3
-    case fs     => throw new NoSuchElementException(s"Unrecognized filesystem $fs")
-  }
 
   implicit val hadoopPathRead: scopt.Read[Path] = scopt.Read.reads {
     case s if s.nonEmpty => new Path(s)
@@ -50,10 +46,10 @@ object ArgumentParser {
         .required()
         .action((x, c) => c.copy(path = x))
         .text("path text"),
-      opt[TargetFilesystem]('f', "filesystem")
-        .required()
-        .action((x, c) => c.copy(filesystem = x))
-        .text("unix/hdfs/s3")
+      opt[Boolean]('k', "keep-backup")
+        .action((x, c) => c.copy(keepBackup = x))
+        .text("keep backup")
+        .text("path text")
     )
   }
 
@@ -62,12 +58,26 @@ object ArgumentParser {
       parser,
       args,
       AppConfig(
-        new Path("default"),
-        Unix
+        path = new Path("default"),
+        filesystem = Unix,
+        keepBackup = false
       )
     )
 
-    parseResult.toRight(UnknownError("Unknown error when parsing arguments"))
+    parseResult.fold(Left(UnknownError("Unknown error when parsing arguments")): Either[AppError, AppConfig]) { conf =>
+      val fs = getFsFromPath(conf.path.toString)
+      fs.map(fs => conf.copy(filesystem = fs))
+    }
+  }
+
+  private def getFsFromPath(path: String): Either[UnknownFileSystemError, TargetFilesystem] = path match {
+    case _ if path.startsWith("/")       => Unix.asRight
+    case _ if path.startsWith("hdfs://") => Hdfs.asRight
+    case _ if path.startsWith("s3://")   => S3.asRight
+    case _ =>
+      UnknownFileSystemError(
+        s"Couldn't extract filesystem from path $path"
+      ).asLeft
   }
 
 }

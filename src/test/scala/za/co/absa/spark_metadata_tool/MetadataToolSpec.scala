@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -65,7 +66,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   it should "return underlying error if the file couldn't be loaded" in {
     val path = createPath(s3BaseString, s"$SparkMetadataDir".some, "1".some)
-    val err  = IoError(s"Path $path does not exist")
+    val err  = IoError(s"Path $path does not exist", None)
 
     (fileManager.readAllLines _).expects(path).returning(err.asLeft)
 
@@ -76,7 +77,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   "saveFile" should "return underlying error in case of failure" in {
     val path = createPath(s3BaseString, s"$SparkMetadataDir".some, "1".some)
-    val err  = IoError(s"Failed to write file to $path")
+    val err  = IoError(s"Failed to write file to $path", None)
 
     (fileManager.write _).expects(path, *).returning(err.asLeft)
 
@@ -121,6 +122,26 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val res = metadataTool.fixPaths(data, s3BasePath, firstPartKey.some)
 
     res.left.value shouldBe expected
+  }
+
+  it should "not fail when encountering already fixed path" in {
+    val numLines = 10
+    val alreadyFixed =
+      createPath(
+        s3BaseString,
+        createPartitions(firstPartKey, s"value${(numLines + 1).toString}").some,
+        s"testFile${(numLines + 1).toString}.parquet".some
+      )
+    val data: Seq[FileLine] = stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(
+      JsonLine(mapper.readValue(validLine(alreadyFixed), classOf[ListMap[String, String]]))
+    )
+    val expected: Seq[FileLine] = stringLines ++ jsonLines(s3BaseString, firstPartKey.some, numLines) ++ Seq(
+      JsonLine(mapper.readValue(validLine(alreadyFixed), classOf[ListMap[String, String]]))
+    )
+
+    val res = metadataTool.fixPaths(data, s3BasePath, firstPartKey.some)
+
+    res.value should contain theSameElementsAs expected
   }
 
   it should "fail if any JSON line doesn't contain 'path' key" in {

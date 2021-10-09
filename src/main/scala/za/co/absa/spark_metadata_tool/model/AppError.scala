@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -18,7 +19,7 @@ package za.co.absa.spark_metadata_tool.model
 //TODO: improve error model to better match use cases
 trait AppError
 
-case class IoError(msg: String)                extends AppError
-case class NotFoundError(msg: String)          extends AppError
-case class UnknownFileSystemError(msg: String) extends AppError
-case class UnknownError(msg: String)           extends AppError
+case class IoError(msg: String, stacktrace: Option[Seq[StackTraceElement]]) extends AppError
+case class NotFoundError(msg: String)                                       extends AppError
+case class UnknownFileSystemError(msg: String)                              extends AppError
+case class UnknownError(msg: String)                                        extends AppError

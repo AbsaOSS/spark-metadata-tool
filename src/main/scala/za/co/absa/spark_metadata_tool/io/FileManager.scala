@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -23,4 +24,6 @@ trait FileManager {
   def listDirectories(path: Path): Either[IoError, Seq[Path]]
   def readAllLines(path: Path): Either[IoError, Seq[String]]
   def write(path: Path, lines: Seq[String]): Either[IoError, Unit]
+  def copy(from: Path, to: Path): Either[IoError, Unit]
+  def delete(paths: Seq[Path]): Either[IoError, Unit]
 }

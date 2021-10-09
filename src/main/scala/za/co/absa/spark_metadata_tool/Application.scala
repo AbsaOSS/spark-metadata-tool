@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -17,13 +18,14 @@ package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.io.FileManager
+import za.co.absa.spark_metadata_tool.io.S3FileManager
 import za.co.absa.spark_metadata_tool.io.UnixFileManager
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.Hdfs
 import za.co.absa.spark_metadata_tool.model.S3
-import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 
 object Application extends App {
@@ -37,12 +39,19 @@ object Application extends App {
     filesToFix       <- io.listFiles(metaPath)
     key              <- tool.getFirstPartitionKey(conf.path)
     _                <- filesToFix.traverse(path => fixFile(path, tool, conf.path, key))
+    backupPath        = new Path(s"${conf.path}/$BackupDir")
+    _                <- if (conf.keepBackup) ().asRight else deleteBackup(backupPath, io)
   } yield ()
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
     config <- ArgumentParser.createConfig(args)
-    io      = initFileManager(config.filesystem)
+    io      = initFileManager(config)
   } yield (config, io, new MetadataTool(io))
+
+  private def deleteBackup(backupDir: Path, io: FileManager): Either[AppError, Unit] = for {
+    backupFiles <- io.listFiles(backupDir)
+    _           <- io.delete(backupFiles)
+  } yield ()
 
   private def fixFile(
     path: Path,
@@ -51,15 +60,16 @@ object Application extends App {
     firstPartitionKey: Option[String]
   ): Either[AppError, Unit] = for {
     parsed <- metaTool.loadFile(path)
+    _      <- metaTool.backupFile(path)
     fixed  <- metaTool.fixPaths(parsed, newBasePath, firstPartitionKey)
     _      <- metaTool.saveFile(path, fixed)
   } yield ()
 
   //TODO: implement remaining file managers
-  private def initFileManager(fs: TargetFilesystem): FileManager = fs match {
+  private def initFileManager(config: AppConfig): FileManager = config.filesystem match {
     case Unix => UnixFileManager
     case Hdfs => throw new NotImplementedError
-    case S3   => throw new NotImplementedError
+    case S3   => S3FileManager(S3Client.builder().build())
   }
 
 }

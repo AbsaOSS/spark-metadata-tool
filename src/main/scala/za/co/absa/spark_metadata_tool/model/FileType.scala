@@ -16,16 +16,8 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-sealed trait TargetFilesystem {
-  def pathPrefix: String
-}
+sealed trait FileType
 
-case object Unix extends TargetFilesystem {
-  override def pathPrefix: String = "file://"
-}
-case object Hdfs extends TargetFilesystem {
-  override def pathPrefix: String = "hdfs://"
-}
-case object S3 extends TargetFilesystem {
-  override def pathPrefix: String = "s3://"
-}
+case object File      extends FileType
+case object Directory extends FileType
+case object All       extends FileType
