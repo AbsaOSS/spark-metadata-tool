@@ -16,30 +16,19 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import io.circe.parser._
+import org.scalatest.EitherValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import scala.collection.immutable.ListMap
-
-class FileLineSpec extends AnyFlatSpec with Matchers {
-  private implicit val mapper = new ObjectMapper
-  mapper.registerModule(DefaultScalaModule)
+class FileLineSpec extends AnyFlatSpec with Matchers with EitherValues {
 
   "JSON (de)serialization" should "preserve insertion order" in {
 
-    val json = """{"key4":"value4","key":"value","key2":"value2","key3":"value3"}"""
-    val expected = List(
-      "key4" -> "value4",
-      "key"  -> "value",
-      "key2" -> "value2",
-      "key3" -> "value3"
-    )
+    val json = """{"key4":"value4","key":12345,"key2":true,"key3":"value3"}"""
 
-    val parsed = JsonLine(mapper.readValue(json, classOf[ListMap[String, String]]))
+    val parsed = parse(json).map(JsonLine)
 
-    parsed.fields.toList should contain theSameElementsInOrderAs expected
-    FileLine.write(parsed) shouldBe json
+    parsed.value.fields.noSpaces shouldBe json
   }
 }

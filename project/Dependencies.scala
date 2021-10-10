@@ -17,15 +17,16 @@ import sbt._
 
 object Dependencies {
 
-  val jacksonVersion = "2.12.5"
+  val circeVersion = "0.14.1"
 
-  lazy val aws          = "software.amazon.awssdk"        % "s3"                   % "2.17.55"
-  lazy val cats         = "org.typelevel"                %% "cats-core"            % "2.3.0"
-  lazy val jackson      = "com.fasterxml.jackson.core"    % "jackson-databind"     % jacksonVersion
-  lazy val jacksonScala = "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion
-  lazy val scalaTest    = "org.scalatest"                %% "scalatest"            % "3.2.9" % Test
-  lazy val scalaMock    = "org.scalamock"                %% "scalamock"            % "5.1.0" % Test
-  lazy val scopt        = "com.github.scopt"             %% "scopt"                % "4.0.1"
+  lazy val aws          = "software.amazon.awssdk" % "s3"            % "2.17.55"
+  lazy val cats         = "org.typelevel"         %% "cats-core"     % "2.3.0"
+  lazy val scalaTest    = "org.scalatest"         %% "scalatest"     % "3.2.9" % Test
+  lazy val scalaMock    = "org.scalamock"         %% "scalamock"     % "5.1.0" % Test
+  lazy val scopt        = "com.github.scopt"      %% "scopt"         % "4.0.1"
+  lazy val circeCore    = "io.circe"              %% "circe-core"    % circeVersion
+  lazy val circeGeneric = "io.circe"              %% "circe-generic" % circeVersion
+  lazy val circeParser  = "io.circe"              %% "circe-parser"  % circeVersion
 
   lazy val hadoop = ("org.apache.hadoop" % "hadoop-common" % "2.10.1")
     .exclude("asm", "asm")
@@ -33,13 +34,14 @@ object Dependencies {
 
   lazy val dependencies: Seq[ModuleID] = Seq(
     aws,
+    cats,
+    circeCore,
+    circeGeneric,
+    circeParser,
+    hadoop,
     scalaTest,
     scalaMock,
-    scopt,
-    cats,
-    hadoop,
-    jackson,
-    jacksonScala
+    scopt
   )
 
 }

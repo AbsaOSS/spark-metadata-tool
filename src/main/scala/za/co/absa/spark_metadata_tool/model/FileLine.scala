@@ -16,18 +16,12 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-import com.fasterxml.jackson.databind.ObjectMapper
-
-import scala.collection.immutable.ListMap
+import io.circe.HCursor
+import io.circe.Json
 
 sealed trait FileLine
 
-object FileLine {
-  def write(line: FileLine)(implicit mapper: ObjectMapper): String = line match {
-    case line: StringLine => line.value
-    case line: JsonLine   => mapper.writeValueAsString(line.fields)
-  }
+case class StringLine(value: String) extends FileLine
+case class JsonLine(fields: Json) extends FileLine {
+  val cursor: HCursor = fields.hcursor
 }
-
-case class StringLine(value: String)                 extends FileLine
-case class JsonLine(fields: ListMap[String, String]) extends FileLine
