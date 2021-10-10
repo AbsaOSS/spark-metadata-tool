@@ -29,6 +29,6 @@ class FileLineSpec extends AnyFlatSpec with Matchers with EitherValues {
 
     val parsed = parse(json).map(JsonLine)
 
-    parsed.value.fields.noSpaces shouldBe json
+    parsed.value.toString shouldBe json
   }
 }

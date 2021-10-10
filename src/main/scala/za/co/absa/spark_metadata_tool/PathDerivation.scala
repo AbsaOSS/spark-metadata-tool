@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-package za.co.absa.spark_metadata_tool.model
+package za.co.absa.spark_metadata_tool
 
-import io.circe.HCursor
-import io.circe.Json
+import _root_.io.circe.Decoder
+import _root_.io.circe.Encoder
+import org.apache.hadoop.fs.Path
 
-sealed trait FileLine
+import scala.util.Try
 
-case class StringLine(value: String) extends FileLine {
-  override def toString: String = value
-}
-case class JsonLine(value: Json) extends FileLine {
-  val cursor: HCursor = value.hcursor
+object PathDerivation {
 
-  override def toString: String = value.noSpaces
+  implicit val encodePath: Encoder[Path] = Encoder.encodeString.contramap[Path](_.toString)
+
+  implicit val decodePath: Decoder[Path] = Decoder.decodeString.emapTry(str => Try(new Path(str)))
+
 }

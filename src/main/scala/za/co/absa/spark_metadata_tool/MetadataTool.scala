@@ -20,6 +20,7 @@ import _root_.io.circe.parser._
 import _root_.io.circe.syntax._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import za.co.absa.spark_metadata_tool.PathDerivation._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.FileLine
@@ -80,13 +81,7 @@ class MetadataTool(io: FileManager) {
     * @return
     *   Unit or an error
     */
-  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(
-    path,
-    data.map {
-      case l: StringLine => l.value
-      case l: JsonLine   => l.fields.noSpaces
-    }
-  )
+  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data.map(_.toString))
 
   /** Finds name of the top level partition, if it exists.
     *
@@ -120,8 +115,8 @@ class MetadataTool(io: FileManager) {
     parsed <- loadFile(file)
     extracted <- parsed.collectFirst { case l: JsonLine =>
                    l.cursor
-                     .get[String]("path")
-                     .bimap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.fields.noSpaces}"), new Path(_))
+                     .get[Path]("path")
+                     .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.toString}"))
                  }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
     path <- extracted
   } yield path
@@ -143,9 +138,8 @@ class MetadataTool(io: FileManager) {
     firstPartitionKey: Option[String]
   ): Either[AppError, JsonLine] = for {
     oldPath <- line.cursor
-                 .get[String]("path")
-                 .map(new Path(_))
-                 .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${line.fields.noSpaces}"))
+                 .get[Path]("path")
+                 .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${line.toString}"))
     newPath <- fixPath(
                  oldPath,
                  newBasePath,

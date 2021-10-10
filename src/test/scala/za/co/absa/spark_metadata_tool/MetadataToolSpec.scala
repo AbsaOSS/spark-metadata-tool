@@ -146,7 +146,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val corruptedLine = JsonLine(parse(lineNoPath).value)
     val data: Seq[FileLine] =
       stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(corruptedLine)
-    val expected = NotFoundError(s"Couldn't find path in JSON line ${corruptedLine.fields.noSpaces}")
+    val expected = NotFoundError(s"Couldn't find path in JSON line ${corruptedLine.toString}")
 
     val res = metadataTool.fixPaths(data, s3BasePath, firstPartKey.some)
 
@@ -166,10 +166,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.readAllLines _)
       .expects(*)
-      .returning(testFile.map {
-        case l: StringLine => l.value
-        case l: JsonLine   => l.fields.noSpaces
-      }.asRight)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -188,10 +185,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.readAllLines _)
       .expects(*)
-      .returning(testFile.map {
-        case l: StringLine => l.value
-        case l: JsonLine   => l.fields.noSpaces
-      }.asRight)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -225,10 +219,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.readAllLines _)
       .expects(testFilePath)
-      .returning(testFile.map {
-        case l: StringLine => l.value
-        case l: JsonLine   => l.fields.noSpaces
-      }.asRight)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -247,10 +238,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.readAllLines _)
       .expects(*)
-      .returning(testFile.map {
-        case l: StringLine => l.value
-        case l: JsonLine   => l.fields.noSpaces
-      }.asRight)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
