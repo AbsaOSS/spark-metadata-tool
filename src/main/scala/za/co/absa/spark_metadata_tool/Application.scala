@@ -51,6 +51,7 @@ object Application extends App {
   private def deleteBackup(backupDir: Path, io: FileManager): Either[AppError, Unit] = for {
     backupFiles <- io.listFiles(backupDir)
     _           <- io.delete(backupFiles)
+    _           <- io.delete(Seq(backupDir))
   } yield ()
 
   private def fixFile(
