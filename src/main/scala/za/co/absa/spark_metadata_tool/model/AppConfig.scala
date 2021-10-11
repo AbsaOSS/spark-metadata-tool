@@ -21,5 +21,16 @@ import org.apache.hadoop.fs.Path
 final case class AppConfig(
   path: Path,
   filesystem: TargetFilesystem,
-  keepBackup: Boolean
-)
+  keepBackup: Boolean,
+  verbose: Boolean,
+  logToFile: Boolean
+) {
+  override def toString: String = s"""
+  Configuration:
+    Path to root folder: $path
+    Filesystem:          $filesystem
+    Keep backup:         $keepBackup
+    Verbose:             $verbose
+    Log to file:         $logToFile  
+  """
+}

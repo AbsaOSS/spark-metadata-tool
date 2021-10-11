@@ -19,6 +19,7 @@ package za.co.absa.spark_metadata_tool
 import cats.implicits._
 import org.apache.hadoop.fs.Path
 import scopt.OParser
+import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.Hdfs
@@ -28,7 +29,10 @@ import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownError
 import za.co.absa.spark_metadata_tool.model.UnknownFileSystemError
 
+import scala.util.chaining._
+
 object ArgumentParser {
+  implicit private val logger = org.log4s.getLogger
 
   implicit val hadoopPathRead: scopt.Read[Path] = scopt.Read.reads {
     case s if s.nonEmpty => new Path(s)
@@ -48,7 +52,13 @@ object ArgumentParser {
         .text("path text"),
       opt[Unit]("keep-backup")
         .action((_, c) => c.copy(keepBackup = true))
-        .text("keep backup")
+        .text("keep backup"),
+      opt[Unit]("verbose")
+        .action((_, c) => c.copy(verbose = true))
+        .text("verbose"),
+      opt[Unit]("log-to-file")
+        .action((_, c) => c.copy(logToFile = true))
+        .text("logtofile")
     )
   }
 
@@ -59,13 +69,15 @@ object ArgumentParser {
       AppConfig(
         path = new Path("default"),
         filesystem = Unix,
-        keepBackup = false
+        keepBackup = false,
+        verbose = false,
+        logToFile = false
       )
     )
 
     parseResult.fold(Left(UnknownError("Unknown error when parsing arguments")): Either[AppError, AppConfig]) { conf =>
       val fs = getFsFromPath(conf.path.toString)
-      fs.map(fs => conf.copy(filesystem = fs))
+      fs.map(fs => conf.copy(filesystem = fs)).tap(_.logValueDebug("Parsed application config"))
     }
   }
 

@@ -29,8 +29,6 @@ import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.Unix
 
 object Application extends App {
-  private val logger = org.log4s.getLogger
-  logger.info("We do have logging")
 
   //TODO: proper error handling
   run(args).leftMap(err => throw new RuntimeException(err.toString))
