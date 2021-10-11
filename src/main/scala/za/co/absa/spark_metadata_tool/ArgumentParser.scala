@@ -46,10 +46,9 @@ object ArgumentParser {
         .required()
         .action((x, c) => c.copy(path = x))
         .text("path text"),
-      opt[Boolean]('k', "keep-backup")
-        .action((x, c) => c.copy(keepBackup = x))
+      opt[Unit]("keep-backup")
+        .action((_, c) => c.copy(keepBackup = true))
         .text("keep backup")
-        .text("path text")
     )
   }
 

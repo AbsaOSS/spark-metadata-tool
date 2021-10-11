@@ -24,6 +24,8 @@ import za.co.absa.spark_metadata_tool.model.IoError
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
+import java.nio.file.Files
+import java.nio.file.Paths
 import scala.io.Source
 import scala.util.Try
 import scala.util.Using
@@ -46,9 +48,22 @@ case object UnixFileManager extends FileManager {
       writer.write(lines.mkString("\n"))
     }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), _ => Right(()))
 
-  override def copy(origin: Path, destination: Path): Either[IoError, Unit] = ().asRight //TODO: Add implementation
+  override def copy(origin: Path, destination: Path): Either[IoError, Unit] = Try {
 
-  override def delete(paths: Seq[Path]): Either[IoError, Unit] = ().asRight //TODO: Add implementation
+    val bkpDir = Paths.get(withScheme(destination.getParent).toUri)
+    val from   = Paths.get(withScheme(origin).toUri)
+    val to     = Paths.get(withScheme(destination).toUri)
+
+    if (Files.notExists(bkpDir)) {
+      Files.createDirectories(bkpDir)
+    }
+
+    Files.copy(from, to)
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+
+  def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
+    paths.foreach(p => Files.delete(Paths.get(withScheme(p).toUri)))
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)
@@ -67,4 +82,6 @@ case object UnixFileManager extends FileManager {
   private def checkDirectoryExists(directory: File): Either[IoError, Boolean] = Try {
     directory.exists && directory.isDirectory
   }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), res => Right(res))
+
+  private def withScheme(path: Path): Path = new Path(s"file:///${path.toString}")
 }
