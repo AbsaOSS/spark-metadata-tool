@@ -261,8 +261,8 @@ object MetadataToolSpec {
     Seq(basePath.some, partitions, fileName).flatten.mkString("/")
   )
 
-  val lineNoPath                    = """{"key":"value","key2":"value2","key3":"value3"}"""
-  def validLine(path: Path): String = s"""{"path":"$path","key":"value","key2":"value2","key3":"value3"}"""
+  val lineNoPath                    = """{"key":"value","key2":12345,"key3":false}"""
+  def validLine(path: Path): String = s"""{"path":"$path","key":12345,"key2":true,"key3":"value3"}"""
 
   val stringLines: Seq[FileLine] = Seq(
     StringLine("I am a regular String"),

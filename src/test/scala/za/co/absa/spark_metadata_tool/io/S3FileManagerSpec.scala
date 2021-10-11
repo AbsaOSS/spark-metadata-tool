@@ -43,8 +43,8 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
     val lines = Seq(
       "I am a regular String",
       "Me too!",
-      """{"key":"value","key2":"value2","key3":"value3"}""",
-      """{"key":"value4","key2":"value5","key3":"value6"}"""
+      """{"key":"value","key2":54321,"key3":false}""",
+      """{"key":"value4","key2":12345","key3":true}"""
     )
     val response = PutObjectResponse.builder().build()
     val reqBody  = ArgCapture.CaptureOne[RequestBody]()
