@@ -10,7 +10,7 @@ jobs:
   test-sbt:
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: placeholder
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
     name: SBT Test
