@@ -34,7 +34,6 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import za.co.absa.spark_metadata_tool.model.All
 import za.co.absa.spark_metadata_tool.model.Directory
 import za.co.absa.spark_metadata_tool.model.File
-import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.FileType
 import za.co.absa.spark_metadata_tool.model.IoError
 
@@ -98,7 +97,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     parsedLines
   }
 
-  override def write(path: Path, lines: Seq[FileLine]): Either[IoError, Unit] = {
+  override def write(path: Path, lines: Seq[String]): Either[IoError, Unit] = {
     val bucket = getBucket(path)
     val key    = getKey(path, bucket)
 
@@ -118,9 +117,9 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   override def listFiles(path: Path): Either[IoError, Seq[Path]] = listBucket(path, File)
 
-  private def toBytes(lines: Seq[FileLine]): Either[IoError, Array[Byte]] =
+  private def toBytes(lines: Seq[String]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>
-      lines.foreach(l => stream.write(s"${l.toString}\n".getBytes))
+      lines.foreach(l => stream.write(s"$l\n".getBytes))
       stream.toByteArray
     }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
 

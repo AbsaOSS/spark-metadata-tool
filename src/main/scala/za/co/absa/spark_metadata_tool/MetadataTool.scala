@@ -16,17 +16,18 @@
 
 package za.co.absa.spark_metadata_tool
 
+import _root_.io.circe.parser._
+import _root_.io.circe.syntax._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
-import spray.json._
+import za.co.absa.spark_metadata_tool.PathDerivation._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.JsonLine
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
-
-import scala.util.Try
+import za.co.absa.spark_metadata_tool.model.UnknownError
 
 class MetadataTool(io: FileManager) {
 
@@ -80,7 +81,7 @@ class MetadataTool(io: FileManager) {
     * @return
     *   Unit or an error
     */
-  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data)
+  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data.map(_.toString))
 
   /** Finds name of the top level partition, if it exists.
     *
@@ -112,14 +113,15 @@ class MetadataTool(io: FileManager) {
               .find(!_.getName.endsWith("compact"))
               .toRight(NotFoundError(s"Couldn't find standard metadata file to load in $metaFiles"))
     parsed <- loadFile(file)
-    json <- parsed.collectFirst { case l: JsonLine =>
-              l.value.fields.get("path").toRight(NotFoundError(s"Couldn't find path in JSON line $l"))
-            }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
-    path <- json.map(_.convertTo[Path])
+    extracted <- parsed.collectFirst { case l: JsonLine =>
+                   l.cursor
+                     .get[Path]("path")
+                     .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.toString}"))
+                 }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
+    path <- extracted
   } yield path
 
-  private def parseLine(line: String): FileLine =
-    Try(line.parseJson.asJsObject).fold(_ => StringLine(line), json => JsonLine(json))
+  private def parseLine(line: String): FileLine = parse(line).fold(_ => StringLine(line), json => JsonLine(json))
 
   private def processLine(
     line: FileLine,
@@ -135,17 +137,16 @@ class MetadataTool(io: FileManager) {
     newBasePath: Path,
     firstPartitionKey: Option[String]
   ): Either[AppError, JsonLine] = for {
-    oldPath <- line.value.fields
-                 .get("path")
-                 .fold(NotFoundError(s"Couldn't find key 'path' in $line").asLeft: Either[NotFoundError, Path])(
-                   _.convertTo[Path].asRight
-                 )
+    oldPath <- line.cursor
+                 .get[Path]("path")
+                 .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${line.toString}"))
     newPath <- fixPath(
                  oldPath,
                  newBasePath,
                  firstPartitionKey
                )
-    fixedLine = line.value.copy(fields = line.value.fields + ("path" -> newPath.toJson))
+    fixedLine <-
+      line.cursor.downField("path").set(newPath.toString.asJson).top.toRight(UnknownError("We need better error!"))
   } yield JsonLine(fixedLine)
 
   private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =

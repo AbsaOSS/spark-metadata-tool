@@ -16,16 +16,19 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-import io.circe.HCursor
-import io.circe.Json
+import io.circe.parser._
+import org.scalatest.EitherValues
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
-sealed trait FileLine
+class FileLineSpec extends AnyFlatSpec with Matchers with EitherValues {
 
-case class StringLine(value: String) extends FileLine {
-  override def toString: String = value
-}
-case class JsonLine(value: Json) extends FileLine {
-  val cursor: HCursor = value.hcursor
+  "JSON (de)serialization" should "preserve insertion order" in {
 
-  override def toString: String = value.noSpaces
+    val json = """{"key4":"value4","key":12345,"key2":true,"key3":"value3"}"""
+
+    val parsed = parse(json).map(JsonLine)
+
+    parsed.value.toString shouldBe json
+  }
 }

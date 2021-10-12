@@ -16,6 +16,7 @@
 
 package za.co.absa.spark_metadata_tool
 
+import _root_.io.circe.parser._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
 import org.scalamock.scalatest.MockFactory
@@ -23,7 +24,6 @@ import org.scalatest.EitherValues
 import org.scalatest.OptionValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import spray.json._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.IoError
@@ -45,7 +45,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     (fileManager.readAllLines _).expects(*).returning(Seq(line).asRight)
 
     val res                     = metadataTool.loadFile(s3BasePath)
-    val expected: Seq[FileLine] = Seq(JsonLine(line.parseJson.asJsObject))
+    val expected: Seq[FileLine] = Seq(JsonLine(parse(line).value))
 
     res.value should contain theSameElementsAs expected
   }
@@ -110,7 +110,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val corruptedPath =
       createPath(hdfsBaseString, createPartitions("differentKey", "value1").some, "testFile.parquet".some)
     val data: Seq[FileLine] = stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(
-      JsonLine(validLine(corruptedPath).parseJson.asJsObject)
+      JsonLine(parse(validLine(corruptedPath)).value)
     )
     val expected = NotFoundError(
       s"Failed to fix path $corruptedPath! Couldn't split as partition key $firstPartKey was not found in the path."
@@ -130,10 +130,10 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
         s"testFile${(numLines + 1).toString}.parquet".some
       )
     val data: Seq[FileLine] = stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(
-      JsonLine(validLine(alreadyFixed).parseJson.asJsObject)
+      JsonLine(parse(validLine(alreadyFixed)).value)
     )
     val expected: Seq[FileLine] = stringLines ++ jsonLines(s3BaseString, firstPartKey.some, numLines) ++ Seq(
-      JsonLine(validLine(alreadyFixed).parseJson.asJsObject)
+      JsonLine(parse(validLine(alreadyFixed)).value)
     )
 
     val res = metadataTool.fixPaths(data, s3BasePath, firstPartKey.some)
@@ -143,10 +143,10 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   it should "fail if any JSON line doesn't contain 'path' key" in {
     val numLines      = 10
-    val corruptedLine = JsonLine(lineNoPath.parseJson.asJsObject)
+    val corruptedLine = JsonLine(parse(lineNoPath).value)
     val data: Seq[FileLine] =
       stringLines ++ jsonLines(hdfsBaseString, firstPartKey.some, numLines) ++ Seq(corruptedLine)
-    val expected = NotFoundError(s"Couldn't find key 'path' in $corruptedLine")
+    val expected = NotFoundError(s"Couldn't find path in JSON line ${corruptedLine.toString}")
 
     val res = metadataTool.fixPaths(data, s3BasePath, firstPartKey.some)
 
@@ -164,7 +164,9 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _)
+      .expects(*)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -181,7 +183,9 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _)
+      .expects(*)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -213,7 +217,9 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(testFilePath).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _)
+      .expects(testFilePath)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -223,14 +229,16 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   it should "fail when there's JSON with missing 'path' key" in {
     val path         = s3BasePath
     val metadataPath = createPath(s3BaseString, s"$SparkMetadataDir".some, None)
-    val testFile     = stringLines ++ Seq(JsonLine(lineNoPath.parseJson.asJsObject))
+    val testFile     = stringLines ++ Seq(JsonLine(parse(lineNoPath).value))
     val expected     = NotFoundError(s"Couldn't find path in JSON line $lineNoPath")
 
     (fileManager.listDirectories _).expects(path).returning(mixedDirs.asRight)
 
     (fileManager.listFiles _).expects(metadataPath).returning(metaFiles.asRight)
 
-    (fileManager.readAllLines _).expects(*).returning(testFile.map(_.toString).asRight)
+    (fileManager.readAllLines _)
+      .expects(*)
+      .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
 
@@ -240,20 +248,21 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 }
 
 object MetadataToolSpec {
-  val firstPartKey   = "key1"
-  val hdfsBaseString = "hdfs://path/to/root/dir"
-  val hdfsBasePath   = createPath(hdfsBaseString, None, None)
-  val s3BaseString   = "s3://some/base/path"
-  val s3BasePath     = createPath(s3BaseString, None, None)
-  val s3TestPath     = createPath(s3BaseString, createPartitions("key1", "value1").some, "testFile.parquet".some)
+
+  val firstPartKey: String   = "key1"
+  val hdfsBaseString: String = "hdfs://path/to/root/dir"
+  val s3BaseString: String   = "s3://some/base/path"
+  val hdfsBasePath: Path     = createPath(hdfsBaseString, None, None)
+  val s3BasePath: Path       = createPath(s3BaseString, None, None)
+  val s3TestPath: Path       = createPath(s3BaseString, createPartitions("key1", "value1").some, "testFile.parquet".some)
 
   def createPartitions(key1Name: String, key1Value: String): String = s"$key1Name=$key1Value/key2=value2"
   def createPath(basePath: String, partitions: Option[String], fileName: Option[String]): Path = new Path(
     Seq(basePath.some, partitions, fileName).flatten.mkString("/")
   )
 
-  val lineNoPath                    = """{"key":"value","key2":"value2","key3":"value3"}"""
-  def validLine(path: Path): String = s"""{"path":"$path","key":"value","key2":"value2","key3":"value3"}"""
+  val lineNoPath                    = """{"key":"value","key2":12345,"key3":false}"""
+  def validLine(path: Path): String = s"""{"path":"$path","key":12345,"key2":true,"key3":"value3"}"""
 
   val stringLines: Seq[FileLine] = Seq(
     StringLine("I am a regular String"),
@@ -261,13 +270,14 @@ object MetadataToolSpec {
   )
 
   def jsonLines(basePath: String, firstPartKey: Option[String], count: Int): Seq[FileLine] = for {
-    value <- Seq.range(1, count)
+    index <- Seq.range(1, count)
     path = createPath(
              basePath,
-             firstPartKey.map(key => createPartitions(key, s"value${value.toString}")),
-             s"testFile${value.toString}.parquet".some
+             firstPartKey.map(key => createPartitions(key, s"value${index.toString}")),
+             s"testFile${index.toString}.parquet".some
            )
-  } yield JsonLine(validLine(path).parseJson.asJsObject)
+    json <- parse(validLine(path)).toSeq
+  } yield JsonLine(json)
 
   val mixedDirs = Seq(
     createPath(s3BaseString, s"$SparkMetadataDir".some, None),
@@ -279,7 +289,7 @@ object MetadataToolSpec {
     createPath(s3BaseString, s"key=value4".some, None)
   )
 
-  val compactFiles = {
+  val compactFiles: Seq[Path] = {
     val numFiles = 5
     for { index <- Seq.range(1, numFiles) } yield createPath(
       s3BaseString,
@@ -288,7 +298,7 @@ object MetadataToolSpec {
     )
   }
 
-  val metaFiles = {
+  val metaFiles: Seq[Path] = {
     val numFiles = 5
     val files =
       for { index <- Seq.range(1, numFiles) } yield createPath(
