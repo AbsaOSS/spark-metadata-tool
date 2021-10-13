@@ -16,10 +16,18 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-//TODO: improve error model to better match use cases
-trait AppError
+sealed trait AppError {
+  def msg: String
+}
 
-case class IoError(msg: String, stacktrace: Option[Seq[StackTraceElement]]) extends AppError
-case class NotFoundError(msg: String)                                       extends AppError
-case class UnknownFileSystemError(msg: String)                              extends AppError
-case class UnknownError(msg: String)                                        extends AppError
+sealed trait AppErrorWithThrowable extends AppError {
+  def ex: Option[Throwable]
+}
+
+case class InitializationError(msg: String, ex: Option[Throwable]) extends AppErrorWithThrowable
+case class IoError(msg: String, ex: Option[Throwable])             extends AppErrorWithThrowable
+case class ArgumentParserError(msg: String)                        extends AppError
+case class NotFoundError(msg: String)                              extends AppError
+case class UnknownFileSystemError(msg: String)                     extends AppError
+case class UnknownError(msg: String)                               extends AppError
+case class NotImplementedError(msg: String)                        extends AppError

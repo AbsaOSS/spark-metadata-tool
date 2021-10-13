@@ -47,13 +47,13 @@ case object UnixFileManager extends FileManager {
 
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = Using(Source.fromFile(path.toString)) { src =>
     src.getLines().toSeq
-  }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), lines => Right(lines))
+  }.fold(err => Left(IoError(err.getMessage, err.some)), lines => Right(lines))
 
   // overwrites by default
   override def write(path: Path, lines: Seq[String]): Either[IoError, Unit] =
     Using(new PrintWriter(new FileOutputStream(new File(path.toString)))) { writer =>
       writer.write(lines.mkString("\n"))
-    }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), _ => Right(()))
+    }.fold(err => Left(IoError(err.getMessage, err.some)), _ => Right(()))
 
   override def copy(origin: Path, destination: Path): Either[IoError, Unit] = Try {
 
@@ -66,11 +66,11 @@ case object UnixFileManager extends FileManager {
     }
 
     Files.copy(from, to)
-  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
   def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
     paths.foreach(p => Files.delete(Paths.get(withScheme(p).toUri)))
-  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)
@@ -78,7 +78,7 @@ case object UnixFileManager extends FileManager {
     checkDirectoryExists(dir) match {
       case Right(true) =>
         Try(dir.listFiles()).fold(
-          err => IoError(err.getMessage, err.getStackTrace.toSeq.some).asLeft,
+          err => IoError(err.getMessage, err.some).asLeft,
           files => files.toSeq.asRight
         )
       case Right(false) => IoError(s"$path does not exist or is not a directory", None).asLeft
@@ -88,7 +88,7 @@ case object UnixFileManager extends FileManager {
 
   private def checkDirectoryExists(directory: File): Either[IoError, Boolean] = Try {
     directory.exists && directory.isDirectory
-  }.fold(err => Left(IoError(err.getMessage, err.getStackTrace.toSeq.some)), res => Right(res))
+  }.fold(err => Left(IoError(err.getMessage, err.some)), res => Right(res))
 
   private def withScheme(path: Path): Path = new Path(s"file:///${path.toString}")
 }

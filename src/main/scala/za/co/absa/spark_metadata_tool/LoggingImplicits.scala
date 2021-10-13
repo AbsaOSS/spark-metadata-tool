@@ -22,10 +22,14 @@ object LoggingImplicits {
 
   implicit class EitherOps(e: Either[_, _]) {
 
-    def logInfo(message: String)(implicit logger: Logger): Unit       = log(message, logValue = false, logger.info(_: String))
-    def logDebug(message: String)(implicit logger: Logger): Unit      = log(message, logValue = false, logger.debug(_: String))
-    def logValueInfo(message: String)(implicit logger: Logger): Unit  = log(message, logValue = true, logger.info(_: String))
-    def logValueDebug(message: String)(implicit logger: Logger): Unit = log(message, logValue = true, logger.debug(_: String))
+    def logInfo(message: String)(implicit logger: Logger): Unit =
+      log(message, logValue = false, logger.info(_: String))
+    def logDebug(message: String)(implicit logger: Logger): Unit =
+      log(message, logValue = false, logger.debug(_: String))
+    def logValueInfo(message: String)(implicit logger: Logger): Unit =
+      log(message, logValue = true, logger.info(_: String))
+    def logValueDebug(message: String)(implicit logger: Logger): Unit =
+      log(message, logValue = true, logger.debug(_: String))
 
     private def log(msg: String, logValue: Boolean, logChannel: String => Unit): Unit = e.fold(
       _ => (), // Do nothing, handle errors at application entry point

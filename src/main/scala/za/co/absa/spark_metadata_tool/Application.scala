@@ -26,17 +26,24 @@ import za.co.absa.spark_metadata_tool.io.S3FileManager
 import za.co.absa.spark_metadata_tool.io.UnixFileManager
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
+import za.co.absa.spark_metadata_tool.model.AppErrorWithThrowable
 import za.co.absa.spark_metadata_tool.model.Hdfs
+import za.co.absa.spark_metadata_tool.model.InitializationError
+import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.S3
+import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 
+import scala.util.Try
 import scala.util.chaining._
 
 object Application extends App {
   implicit private val logger: Logger = org.log4s.getLogger
 
-  //TODO: proper error handling
-  run(args).leftMap(err => logger.error(err.toString))
+  run(args).leftMap {
+    case err: AppErrorWithThrowable => err.ex.fold(logger.error(err.toString))(e => logger.error(e)(err.msg))
+    case err: AppError              => logger.error(err.toString)
+  }
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args).tap(_.logInfo("Initialized application"))
@@ -55,8 +62,9 @@ object Application extends App {
   } yield ()
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
-    config <- ArgumentParser.createConfig(args)
-    io      = initFileManager(config)
+    config   <- ArgumentParser.createConfig(args)
+    s3Client <- initS3(config.filesystem)
+    io       <- initFileManager(config.filesystem, s3Client)
   } yield (config, io, new MetadataTool(io))
 
   private def deleteBackup(backupDir: Path, io: FileManager): Either[AppError, Unit] = for {
@@ -78,11 +86,23 @@ object Application extends App {
     _ <- metaTool.saveFile(path, fixed)
   } yield ()).tap(_.logInfo(s"Done processing file ${path.toString}"))
 
-  //TODO: implement remaining file managers
-  private def initFileManager(config: AppConfig): FileManager = (config.filesystem match {
-    case Unix => UnixFileManager
-    case Hdfs => throw new NotImplementedError
-    case S3   => S3FileManager(S3Client.builder().build())
-  }).tap(fm => logger.debug(s"Initialized file manager : $fm"))
+  def initS3(fs: TargetFilesystem): Either[AppError, Option[S3Client]] = fs match {
+    case S3 =>
+      Try {
+        S3Client.builder().build().some
+      }.toEither.leftMap(err => InitializationError("Failed to initialize S3 Client", err.some))
+    case _ => None.asRight
+  }
+
+  private def initFileManager(fs: TargetFilesystem, s3Client: Option[S3Client]): Either[AppError, FileManager] =
+    ((fs, s3Client) match {
+      case (Unix, _) => UnixFileManager.asRight
+      case (Hdfs, _) =>
+        model
+          .NotImplementedError("HDFS support not implemented yet")
+          .asLeft // https://github.com/AbsaOSS/spark-metadata-tool/issues/5
+      case (S3, Some(client)) => S3FileManager(client).asRight
+      case (S3, None)         => NotFoundError("No S3 Client provided for S3 filesystem").asLeft
+    }).tap(fm => logger.debug(s"Initialized file manager : $fm"))
 
 }

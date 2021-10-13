@@ -27,11 +27,12 @@ import scopt.OParser
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
+import za.co.absa.spark_metadata_tool.model.ArgumentParserError
 import za.co.absa.spark_metadata_tool.model.Hdfs
+import za.co.absa.spark_metadata_tool.model.InitializationError
 import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
-import za.co.absa.spark_metadata_tool.model.UnknownError
 import za.co.absa.spark_metadata_tool.model.UnknownFileSystemError
 
 import java.time.LocalDateTime
@@ -84,7 +85,7 @@ object ArgumentParser {
     )
 
     parseResult
-      .fold(Left(UnknownError("Unknown error when parsing arguments")): Either[AppError, AppConfig]) { conf =>
+      .fold(Left(ArgumentParserError("Couldn't parse provided arguments")): Either[AppError, AppConfig]) { conf =>
         for {
           _  <- initLogging(conf.verbose, conf.logToFile).tap(_.logDebug("Initialized logging"))
           fs <- getFsFromPath(conf.path.toString).tap(_.logValueDebug("Derived filesystem from path"))
@@ -112,7 +113,7 @@ object ArgumentParser {
       fa.activateOptions()
       LogManager.getRootLogger.addAppender(fa)
     }
-  }.toEither.leftMap(err => UnknownError(s"Failed to init logging: ${err.getMessage}"))
+  }.toEither.leftMap(err => InitializationError(s"Failed to init logging: ${err.getMessage}", err.some))
 
   private def getFsFromPath(path: String): Either[UnknownFileSystemError, TargetFilesystem] = path match {
     case _ if path.startsWith("/")       => Unix.asRight
