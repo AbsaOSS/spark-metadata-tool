@@ -254,7 +254,7 @@ object MetadataToolSpec {
   val s3BaseString: String   = "s3://some/base/path"
   val hdfsBasePath: Path     = createPath(hdfsBaseString, None, None)
   val s3BasePath: Path       = createPath(s3BaseString, None, None)
-  val s3TestPath: Path       = createPath(s3BaseString, createPartitions("key1", "value1").some, "testFile.parquet".some)
+  val s3TestPath: Path       = createPath(s3BaseString, createPartitions("key1", "value1").some, "file.parquet".some)
 
   def createPartitions(key1Name: String, key1Value: String): String = s"$key1Name=$key1Value/key2=value2"
   def createPath(basePath: String, partitions: Option[String], fileName: Option[String]): Path = new Path(

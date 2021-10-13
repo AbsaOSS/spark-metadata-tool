@@ -18,6 +18,8 @@ package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import org.log4s.Logger
+import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.io.File
@@ -28,14 +30,20 @@ import java.nio.file.Paths
 import scala.io.Source
 import scala.util.Try
 import scala.util.Using
+import scala.util.chaining._
 
 case object UnixFileManager extends FileManager {
+  implicit private val logger: Logger = org.log4s.getLogger
 
   override def listFiles(path: Path): Either[IoError, Seq[Path]] =
-    listDirectory(path).map(_.filter(_.isFile).map(f => new Path(f.getAbsolutePath)))
+    listDirectory(path)
+      .map(_.filter(_.isFile).map(f => new Path(f.getAbsolutePath)))
+      .tap(_.logValueDebug(s"Listing files in ${path.toString}"))
 
   override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
-    listDirectory(path).map(_.filter(_.isDirectory).map(d => new Path(d.getAbsolutePath)))
+    listDirectory(path)
+      .map(_.filter(_.isDirectory).map(d => new Path(d.getAbsolutePath)))
+      .tap(_.logValueDebug(s"Listing directories in ${path.toString}"))
 
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = Using(Source.fromFile(path.toString)) { src =>
     src.getLines().toSeq

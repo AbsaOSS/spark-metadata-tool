@@ -24,13 +24,4 @@ final case class AppConfig(
   keepBackup: Boolean,
   verbose: Boolean,
   logToFile: Boolean
-) {
-  override def toString: String = s"""
-  Configuration:
-    Path to root folder: $path
-    Filesystem:          $filesystem
-    Keep backup:         $keepBackup
-    Verbose:             $verbose
-    Log to file:         $logToFile  
-  """
-}
+)

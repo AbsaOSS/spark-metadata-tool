@@ -22,19 +22,14 @@ object LoggingImplicits {
 
   implicit class EitherOps(e: Either[_, _]) {
 
-    def logInfo(message: String)(implicit logger: Logger): Unit       = log(message, logger.info(_: String))
-    def logDebug(message: String)(implicit logger: Logger): Unit      = log(message, logger.debug(_: String))
-    def logValueInfo(message: String)(implicit logger: Logger): Unit  = logValue(message, logger.info(_: String))
-    def logValueDebug(message: String)(implicit logger: Logger): Unit = logValue(message, logger.debug(_: String))
+    def logInfo(message: String)(implicit logger: Logger): Unit       = log(message, logValue = false, logger.info(_: String))
+    def logDebug(message: String)(implicit logger: Logger): Unit      = log(message, logValue = false, logger.debug(_: String))
+    def logValueInfo(message: String)(implicit logger: Logger): Unit  = log(message, logValue = true, logger.info(_: String))
+    def logValueDebug(message: String)(implicit logger: Logger): Unit = log(message, logValue = true, logger.debug(_: String))
 
-    private def log(msg: String, log: String => Unit)(implicit logger: Logger): Unit = e.fold(
-      err => logger.error(err.toString),
-      _ => log(msg)
-    )
-
-    private def logValue(msg: String, log: String => Unit)(implicit logger: Logger): Unit = e.fold(
-      err => logger.error(err.toString),
-      v => log(s"$msg : ${v.toString}")
+    private def log(msg: String, logValue: Boolean, logChannel: String => Unit): Unit = e.fold(
+      _ => (), // Do nothing, handle errors at application entry point
+      v => logChannel(s"$msg${if (logValue) s" : ${v.toString}" else ""}")
     )
 
   }

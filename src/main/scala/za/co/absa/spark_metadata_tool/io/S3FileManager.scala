@@ -18,6 +18,7 @@ package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import org.log4s.Logger
 import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
@@ -31,6 +32,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectResponse
+import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.All
 import za.co.absa.spark_metadata_tool.model.Directory
 import za.co.absa.spark_metadata_tool.model.File
@@ -42,8 +44,10 @@ import scala.io.Source
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.Using
+import scala.util.chaining._
 
 case class S3FileManager(s3: S3Client) extends FileManager {
+  implicit private val logger: Logger = org.log4s.getLogger
 
   override def copy(from: Path, to: Path): Either[IoError, Unit] = Try {
     val bucket  = getBucket(from)
@@ -113,9 +117,11 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     } yield ()
   }
 
-  override def listDirectories(path: Path): Either[IoError, Seq[Path]] = listBucket(path, Directory)
+  override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
+    listBucket(path, Directory).tap(_.logValueDebug(s"Listing files in ${path.toString}"))
 
-  override def listFiles(path: Path): Either[IoError, Seq[Path]] = listBucket(path, File)
+  override def listFiles(path: Path): Either[IoError, Seq[Path]] =
+    listBucket(path, File).tap(_.logValueDebug(s"Listing directories in ${path.toString}"))
 
   private def toBytes(lines: Seq[String]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>
