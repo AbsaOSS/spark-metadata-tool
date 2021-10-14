@@ -54,23 +54,24 @@ object ArgumentParser {
     import builder._
     OParser.sequence(
       programName("spark-metadata-tool"),
-      head("spark-metadata-tool", "0.1.0-SNAPSHOT PLACEHOLDER"),
+      head("spark-metadata-tool"),
       opt[Path]('p', "path")
         .required()
         .action((x, c) => c.copy(path = x))
-        .text("path text"),
-      opt[Unit]("keep-backup")
+        .text("full path to data folder, including filesystem (e.g. s3://bucket/foo/root)"),
+      opt[Unit]('k', "keep-backup")
         .action((_, c) => c.copy(keepBackup = true))
-        .text("keep backup"),
+        .text("persist backup files after successful run"),
       opt[Unit]('v', "verbose")
         .action((_, c) => c.copy(verbose = true))
-        .text("verbose"),
+        .text("increase verbosity of application messaging"),
       opt[Unit]("log-to-file")
         .action((_, c) => c.copy(logToFile = true))
-        .text("logtofile"),
+        .text("enable logging to a file"),
       opt[Unit]("dry-run")
         .action((_, c) => c.copy(dryRun = true))
-        .text("dry run")
+        .text("enable dry run mode"),
+      help("help").text("prints this usage text")
     )
   }
 
