@@ -78,7 +78,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.write _).expects(path, *).returning(err.asLeft)
 
-    val res = metadataTool.saveFile(path, Seq.empty)
+    val res = metadataTool.saveFile(path, Seq.empty, false)
 
     res.left.value shouldBe err
   }

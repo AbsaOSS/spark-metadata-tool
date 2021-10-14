@@ -23,5 +23,6 @@ final case class AppConfig(
   filesystem: TargetFilesystem,
   keepBackup: Boolean,
   verbose: Boolean,
-  logToFile: Boolean
+  logToFile: Boolean,
+  dryRun: Boolean
 )

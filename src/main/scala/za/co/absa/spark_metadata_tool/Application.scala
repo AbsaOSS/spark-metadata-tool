@@ -54,13 +54,13 @@ object Application extends App {
              .getFirstPartitionKey(conf.path)
     _ <-
       filesToFix
-        .traverse(path => fixFile(path, tool, conf.path, key))
+        .traverse(path => fixFile(path, tool, conf.path, conf.dryRun, key))
         .tap(_.logInfo("Fixed all files"))
     backupPath = new Path(s"${conf.path}/$BackupDir")
-    _ <- if (conf.keepBackup) { logger.info(s"Keeping backup in $backupPath").asRight }
-         else {
-           logger.info(s"Deleting backup from $backupPath")
-           deleteBackup(backupPath, io).tap(_.logInfo(s"Deleted backup from $backupPath"))
+    _ <- (conf.keepBackup, conf.dryRun) match {
+           case (false, false) => deleteBackup(backupPath, io).tap(_.logInfo(s"Deleted backup from $backupPath"))
+           case (false, true)  => logger.info(s"Deleted backup from $backupPath").asRight
+           case _             => ().asRight
          }
   } yield ()
 
@@ -80,14 +80,15 @@ object Application extends App {
     path: Path,
     metaTool: MetadataTool,
     newBasePath: Path,
+    dryRun: Boolean,
     firstPartitionKey: Option[String]
   ): Either[AppError, Unit] = (for {
     _      <- logger.info(s"Processing file $path").asRight
     parsed <- metaTool.loadFile(path)
-    _      <- metaTool.backupFile(path)
+    _      <- metaTool.backupFile(path, dryRun)
     fixed <-
       metaTool.fixPaths(parsed, newBasePath, firstPartitionKey).tap(_.logDebug(s"Fixed paths in file ${path.toString}"))
-    _ <- metaTool.saveFile(path, fixed)
+    _ <- metaTool.saveFile(path, fixed, dryRun)
   } yield ()).tap(_.logInfo(s"Done processing file ${path.toString}"))
 
   def initS3(fs: TargetFilesystem): Either[AppError, Option[S3Client]] = fs match {
