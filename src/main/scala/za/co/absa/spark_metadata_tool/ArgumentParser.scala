@@ -58,20 +58,20 @@ object ArgumentParser {
       opt[Path]('p', "path")
         .required()
         .action((x, c) => c.copy(path = x))
-        .text("full path to data folder, including filesystem (e.g. s3://bucket/foo/root)"),
+        .text("full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)"),
       opt[Unit]('k', "keep-backup")
         .action((_, c) => c.copy(keepBackup = true))
         .text("persist backup files after successful run"),
       opt[Unit]('v', "verbose")
         .action((_, c) => c.copy(verbose = true))
-        .text("increase verbosity of application messaging"),
+        .text("increase verbosity of application logging"),
       opt[Unit]("log-to-file")
         .action((_, c) => c.copy(logToFile = true))
         .text("enable logging to a file"),
       opt[Unit]("dry-run")
         .action((_, c) => c.copy(dryRun = true))
         .text("enable dry run mode"),
-      help("help").text("prints this usage text")
+      help("help").text("print this usage text")
     )
   }
 
