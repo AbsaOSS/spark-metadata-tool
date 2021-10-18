@@ -27,7 +27,7 @@ Test / parallelExecution := false
 
 val mergeStrategy: Def.SettingsDefinition = assembly / assemblyMergeStrategy := {
   case "META-INF/io.netty.versions.properties" => MergeStrategy.concat
-  case other: Any => MergeStrategy.defaultMergeStrategy(other) 
+  case other: Any                              => MergeStrategy.defaultMergeStrategy(other)
 }
 
 releaseProcess := Seq[ReleaseStep](
@@ -46,6 +46,7 @@ releaseProcess := Seq[ReleaseStep](
 
 lazy val root = (project in file("."))
   .settings(
+    name := "spark-metadata-tool",
     libraryDependencies ++= dependencies,
     semanticdbEnabled := true,                        // enable SemanticDB
     semanticdbVersion := scalafixSemanticdb.revision, // use Scalafix compatible version
@@ -61,18 +62,9 @@ lazy val root = (project in file("."))
       art.withClassifier(Some("assembly"))
     },
     addArtifact(assembly / artifact, assembly),
-    publish / skip := true,
     patSettings
   )
   .enablePlugins(AutomateHeaderPlugin)
-
-// Dummy project to hide fat jar dependencies
-lazy val publishing = project
-  .settings(
-    name                 := "spark-metadata-tool",
-    Compile / packageBin := (root / assembly).value,
-    patSettings
-  )
 
 val patSettings = githubTokenSource := TokenSource.Or(
   TokenSource.Environment("GITHUB_TOKEN"), // Required for publishing
