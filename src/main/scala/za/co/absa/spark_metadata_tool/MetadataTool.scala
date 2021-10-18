@@ -131,6 +131,20 @@ class MetadataTool(io: FileManager) {
     }
   ).tap(_.logDebug(s"Created backup of file $path"))
 
+  def deleteBackup(backupDir: Path, dryRun: Boolean): Either[AppError, Unit] =
+    if (dryRun) {
+      logger.info(s"Checked ${backupDir.toString} for backup files to delete")
+      logger.info(s"Deleted backup files in ${backupDir.toString}")
+      logger.info(s"Deleted backup directory : ${backupDir.toString}").asRight
+    } else {
+      for {
+        backupFiles <-
+          io.listFiles(backupDir).tap(_.logDebug(s"Checked ${backupDir.toString} for backup files to delete"))
+        _ <- io.delete(backupFiles).tap(_.logDebug(s"Deleted backup files in ${backupDir.toString}"))
+        _ <- io.delete(Seq(backupDir)).tap(_.logDebug(s"Deleted backup directory : ${backupDir.toString}"))
+      } yield ()
+    }
+
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
     metaFiles <- io.listFiles(path)
     // avoid loading .compact files due to their potential size

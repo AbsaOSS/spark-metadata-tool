@@ -78,7 +78,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.write _).expects(path, *).returning(err.asLeft)
 
-    val res = metadataTool.saveFile(path, Seq.empty, false)
+    val res = metadataTool.saveFile(path, Seq.empty, dryRun = false)
 
     res.left.value shouldBe err
   }
@@ -248,17 +248,55 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   "backupFile" should "not perform any IO action in dry run" in {
     val path = s3BasePath
 
-    metadataTool.backupFile(path, true)
-
     (fileManager.copy _).expects(*, *).never()
+
+    metadataTool.backupFile(path, dryRun = true)
+  }
+
+  it should "create copy of the file in wet run" in {
+    val path = s3BasePath
+
+    (fileManager.copy _).expects(*, *).returning(().asRight).once()
+
+    metadataTool.backupFile(path, dryRun = false)
   }
 
   "saveFile" should "not perform any IO action in dry run" in {
     val path = s3BasePath
 
-    metadataTool.saveFile(path, Seq.empty, true)
-
     (fileManager.write _).expects(*, *).never()
+
+    metadataTool.saveFile(path, Seq.empty, dryRun = true)
+  }
+
+  it should "write the file contents in wet run" in {
+    val path = s3BasePath
+
+    (fileManager.write _).expects(*, *).returning(().asRight).once()
+
+    metadataTool.saveFile(path, Seq.empty, dryRun = false)
+  }
+
+  "deleteBackup" should "not perform any IO action in dry run" in {
+    val path = s3BasePath
+
+    (fileManager.listFiles _).expects(*).never()
+    (fileManager.delete _).expects(*).never()
+
+    metadataTool.deleteBackup(path, dryRun = true)
+  }
+
+  it should "delete backup files and directory in wet run" in {
+    val path  = s3BasePath
+    val files = Seq(new Path("/backup/file/to/delete"))
+
+    inSequence {
+      (fileManager.listFiles _).expects(path).returning(files.asRight).once()
+      (fileManager.delete _).expects(files).returning(().asRight).once()
+      (fileManager.delete _).expects(Seq(path)).returning(().asRight).once()
+    }
+
+    metadataTool.deleteBackup(path, dryRun = false)
   }
 
 }

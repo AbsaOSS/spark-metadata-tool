@@ -57,11 +57,7 @@ object Application extends App {
         .traverse(path => fixFile(path, tool, conf.path, conf.dryRun, key))
         .tap(_.logInfo("Fixed all files"))
     backupPath = new Path(s"${conf.path}/$BackupDir")
-    _ <- (conf.keepBackup, conf.dryRun) match {
-           case (false, false) => deleteBackup(backupPath, io).tap(_.logInfo(s"Deleted backup from $backupPath"))
-           case (false, true)  => logger.info(s"Deleted backup from $backupPath").asRight
-           case _             => ().asRight
-         }
+    _         <- if (conf.keepBackup) ().asRight else tool.deleteBackup(backupPath, conf.dryRun)
   } yield ()
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
@@ -69,12 +65,6 @@ object Application extends App {
     s3Client <- initS3(config.filesystem)
     io       <- initFileManager(config.filesystem, s3Client)
   } yield (config, io, new MetadataTool(io))
-
-  private def deleteBackup(backupDir: Path, io: FileManager): Either[AppError, Unit] = for {
-    backupFiles <- io.listFiles(backupDir).tap(_.logDebug(s"Checked ${backupDir.toString} for backup files to delete"))
-    _           <- io.delete(backupFiles).tap(_.logDebug(s"Deleted backup files in ${backupDir.toString}"))
-    _           <- io.delete(Seq(backupDir)).tap(_.logDebug(s"Deleted backup directory : ${backupDir.toString}"))
-  } yield ()
 
   private def fixFile(
     path: Path,
