@@ -245,6 +245,22 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res.left.value shouldBe expected
   }
 
+  "backupFile" should "not perform any IO action in dry run" in {
+    val path = s3BasePath
+
+    metadataTool.backupFile(path, true)
+
+    (fileManager.copy _).expects(*, *).never()
+  }
+
+  "saveFile" should "not perform any IO action in dry run" in {
+    val path = s3BasePath
+
+    metadataTool.saveFile(path, Seq.empty, true)
+
+    (fileManager.write _).expects(*, *).never()
+  }
+
 }
 
 object MetadataToolSpec {
