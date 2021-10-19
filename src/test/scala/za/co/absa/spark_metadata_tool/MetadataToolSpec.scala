@@ -248,55 +248,69 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   "backupFile" should "not perform any IO action in dry run" in {
     val path = s3BasePath
 
-    (fileManager.copy _).expects(*, *).never()
+    val copyCall = (fileManager.copy _).expects(*, *).returning(().asRight)
 
     metadataTool.backupFile(path, dryRun = true)
+
+    copyCall.never()
   }
 
   it should "create copy of the file in wet run" in {
     val path = s3BasePath
 
-    (fileManager.copy _).expects(*, *).returning(().asRight).once()
+    val copyCall = (fileManager.copy _).expects(*, *).returning(().asRight)
 
     metadataTool.backupFile(path, dryRun = false)
+
+    copyCall.once()
   }
 
   "saveFile" should "not perform any IO action in dry run" in {
     val path = s3BasePath
 
-    (fileManager.write _).expects(*, *).never()
+    val writeCall = (fileManager.write _).expects(*, *).returning(().asRight)
 
     metadataTool.saveFile(path, Seq.empty, dryRun = true)
+
+    writeCall.never()
   }
 
   it should "write the file contents in wet run" in {
     val path = s3BasePath
 
-    (fileManager.write _).expects(*, *).returning(().asRight).once()
+    val writeCall = (fileManager.write _).expects(*, *).returning(().asRight)
 
     metadataTool.saveFile(path, Seq.empty, dryRun = false)
+
+    writeCall.once()
   }
 
   "deleteBackup" should "not perform any IO action in dry run" in {
-    val path = s3BasePath
+    val path  = s3BasePath
+    val files = Seq(new Path("/backup/file/to/delete"))
 
-    (fileManager.listFiles _).expects(*).never()
-    (fileManager.delete _).expects(*).never()
+    val listCall   = (fileManager.listFiles _).expects(*).returning(files.asRight)
+    val deleteCall = (fileManager.delete _).expects(*).returning(().asRight)
 
     metadataTool.deleteBackup(path, dryRun = true)
+
+    listCall.never()
+    deleteCall.never()
   }
 
   it should "delete backup files and directory in wet run" in {
     val path  = s3BasePath
     val files = Seq(new Path("/backup/file/to/delete"))
 
-    inSequence {
-      (fileManager.listFiles _).expects(path).returning(files.asRight).once()
-      (fileManager.delete _).expects(files).returning(().asRight).once()
-      (fileManager.delete _).expects(Seq(path)).returning(().asRight).once()
-    }
+    val listCall      = (fileManager.listFiles _).expects(path).returning(files.asRight)
+    val deleteCall    = (fileManager.delete _).expects(files).returning(().asRight)
+    val deleteDirCall = (fileManager.delete _).expects(Seq(path)).returning(().asRight)
 
     metadataTool.deleteBackup(path, dryRun = false)
+
+    listCall.once()
+    deleteCall.once()
+    deleteDirCall.once()
   }
 
 }
