@@ -46,8 +46,8 @@ class MetadataTool(io: FileManager) {
     *   sequence of parsed lines or an error
     */
   def loadFile(path: Path): Either[AppError, Seq[FileLine]] = for {
-    lines  <- io.readAllLines(path)
-    parsed <- lines.map(parseLine).asRight
+    lines  <- io.readAllLines(path).tap(_.logDebug(s"Loaded file $path"))
+    parsed <- lines.map(parseLine).tap(_ => logger.debug(s"Parsed contents of file $path")).asRight
   } yield parsed
 
   /** Fixes paths to output files in all relevant lines.

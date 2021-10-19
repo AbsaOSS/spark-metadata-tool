@@ -118,10 +118,10 @@ case class S3FileManager(s3: S3Client) extends FileManager {
   }
 
   override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
-    listBucket(path, Directory).tap(_.logValueDebug(s"Listing files in ${path.toString}"))
+    listBucket(path, Directory).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
 
   override def listFiles(path: Path): Either[IoError, Seq[Path]] =
-    listBucket(path, File).tap(_.logValueDebug(s"Listing directories in ${path.toString}"))
+    listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
   private def toBytes(lines: Seq[String]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>

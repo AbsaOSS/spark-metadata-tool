@@ -38,12 +38,12 @@ case object UnixFileManager extends FileManager {
   override def listFiles(path: Path): Either[IoError, Seq[Path]] =
     listDirectory(path)
       .map(_.filter(_.isFile).map(f => new Path(f.getAbsolutePath)))
-      .tap(_.logValueDebug(s"Listing files in ${path.toString}"))
+      .tap(_.logValueDebug(s"Listed files in ${path.toString}"))
 
   override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
     listDirectory(path)
       .map(_.filter(_.isDirectory).map(d => new Path(d.getAbsolutePath)))
-      .tap(_.logValueDebug(s"Listing directories in ${path.toString}"))
+      .tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = Using(Source.fromFile(path.toString)) { src =>
     src.getLines().toSeq

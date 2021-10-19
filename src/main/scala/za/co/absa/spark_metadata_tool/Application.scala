@@ -57,8 +57,11 @@ object Application extends App {
         .traverse(path => fixFile(path, tool, conf.path, key))
         .tap(_.logInfo("Fixed all files"))
     backupPath = new Path(s"${conf.path}/$BackupDir")
-    _ <- if (conf.keepBackup) { ().asRight }
-         else { deleteBackup(backupPath, io).tap(_.logInfo(s"Deleted backup from $backupPath")) }
+    _ <- if (conf.keepBackup) { logger.info(s"Keeping backup in $backupPath").asRight }
+         else {
+           logger.info(s"Deleting backup from $backupPath")
+           deleteBackup(backupPath, io).tap(_.logInfo(s"Deleted backup from $backupPath"))
+         }
   } yield ()
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
@@ -79,6 +82,7 @@ object Application extends App {
     newBasePath: Path,
     firstPartitionKey: Option[String]
   ): Either[AppError, Unit] = (for {
+    _      <- logger.info(s"Processing file $path").asRight
     parsed <- metaTool.loadFile(path)
     _      <- metaTool.backupFile(path)
     fixed <-
