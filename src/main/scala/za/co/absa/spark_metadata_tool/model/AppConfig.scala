@@ -21,5 +21,7 @@ import org.apache.hadoop.fs.Path
 final case class AppConfig(
   path: Path,
   filesystem: TargetFilesystem,
-  keepBackup: Boolean
+  keepBackup: Boolean,
+  verbose: Boolean,
+  logToFile: Boolean
 )

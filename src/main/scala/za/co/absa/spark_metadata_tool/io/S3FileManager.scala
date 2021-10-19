@@ -18,6 +18,7 @@ package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import org.log4s.Logger
 import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
@@ -31,6 +32,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectResponse
+import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.All
 import za.co.absa.spark_metadata_tool.model.Directory
 import za.co.absa.spark_metadata_tool.model.File
@@ -42,8 +44,10 @@ import scala.io.Source
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.Using
+import scala.util.chaining._
 
 case class S3FileManager(s3: S3Client) extends FileManager {
+  implicit private val logger: Logger = org.log4s.getLogger
 
   override def copy(from: Path, to: Path): Either[IoError, Unit] = Try {
     val bucket  = getBucket(from)
@@ -60,7 +64,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
     s3.copyObject(request)
 
-  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
   override def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
     val bucket = getBucket(
@@ -73,7 +77,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
     s3.deleteObjects(req)
 
-  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+  }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = {
     val bucket = getBucket(path)
@@ -113,32 +117,34 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     } yield ()
   }
 
-  override def listDirectories(path: Path): Either[IoError, Seq[Path]] = listBucket(path, Directory)
+  override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
+    listBucket(path, Directory).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
 
-  override def listFiles(path: Path): Either[IoError, Seq[Path]] = listBucket(path, File)
+  override def listFiles(path: Path): Either[IoError, Seq[Path]] =
+    listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
   private def toBytes(lines: Seq[String]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>
       lines.foreach(l => stream.write(s"$l\n".getBytes))
       stream.toByteArray
-    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.some))
 
   private def put(request: PutObjectRequest, body: RequestBody): Either[IoError, PutObjectResponse] =
     Try {
       s3.putObject(request, body)
-    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.some))
 
   private def getFileStream(
     getObjectRequest: GetObjectRequest
   ): Either[IoError, ResponseInputStream[GetObjectResponse]] =
     Try {
       s3.getObject(getObjectRequest, ResponseTransformer.toInputStream()): ResponseInputStream[GetObjectResponse]
-    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.some))
 
   private def parseFileStream(stream: ResponseInputStream[GetObjectResponse]): Either[IoError, Seq[String]] =
     Using(Source.fromInputStream(stream)) { src =>
       src.getLines().toSeq
-    }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+    }.toEither.leftMap(err => IoError(err.getMessage, err.some))
 
   private def listBucket(path: Path, filter: FileType): Either[IoError, Seq[Path]] = Try {
     val bucket     = getBucket(path)
@@ -162,7 +168,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       case Directory => dirs.toSeq
       case All       => (files ++ dirs).toSeq
     }
-  }.toEither.leftMap(err => IoError(err.getMessage, err.getStackTrace.toSeq.some))
+  }.toEither.leftMap(err => IoError(err.getMessage, err.some))
 
   private def getBucket(path: Path): String              = path.toUri.getHost
   private def getKey(path: Path, bucket: String): String = path.toString.stripPrefix(s"s3://$bucket/")

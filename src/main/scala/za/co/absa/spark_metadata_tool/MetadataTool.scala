@@ -20,6 +20,8 @@ import _root_.io.circe.parser._
 import _root_.io.circe.syntax._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
+import org.log4s.Logger
+import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.PathDerivation._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.AppError
@@ -29,7 +31,10 @@ import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
 import za.co.absa.spark_metadata_tool.model.UnknownError
 
+import scala.util.chaining._
+
 class MetadataTool(io: FileManager) {
+  implicit private val logger: Logger = org.log4s.getLogger
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
     *
@@ -41,8 +46,8 @@ class MetadataTool(io: FileManager) {
     *   sequence of parsed lines or an error
     */
   def loadFile(path: Path): Either[AppError, Seq[FileLine]] = for {
-    lines  <- io.readAllLines(path)
-    parsed <- lines.map(parseLine).asRight
+    lines  <- io.readAllLines(path).tap(_.logDebug(s"Loaded file $path"))
+    parsed <- lines.map(parseLine).tap(_ => logger.debug(s"Parsed contents of file $path")).asRight
   } yield parsed
 
   /** Fixes paths to output files in all relevant lines.
@@ -81,7 +86,8 @@ class MetadataTool(io: FileManager) {
     * @return
     *   Unit or an error
     */
-  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] = io.write(path, data.map(_.toString))
+  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] =
+    io.write(path, data.map(_.toString)).tap(_.logDebug(s"Saved file $path"))
 
   /** Finds name of the top level partition, if it exists.
     *
@@ -100,11 +106,18 @@ class MetadataTool(io: FileManager) {
     pathToMeta           = new Path(s"${rootDirPath.toString}/$SparkMetadataDir")
     testPath            <- getPathFromMetaFile(pathToMeta)
     firstPartition      <- partitionCandidates.find(dir => testPath.toString.contains(dir)).asRight
-    key                 <- firstPartition.flatMap(_.split("=").headOption).asRight
+    key <- firstPartition
+             .flatMap(_.split("=").headOption)
+             .tap {
+               case None      => logger.debug("First partition key not found, assuming unpartitioned data")
+               case Some(key) => logger.debug(s"Found first partition key : $key")
+             }
+             .asRight
   } yield key
 
   def backupFile(path: Path): Either[AppError, Unit] =
     io.copy(path, new Path(path.toString.replaceFirst(SparkMetadataDir, BackupDir)))
+      .tap(_.logDebug(s"Created backup of file $path"))
 
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
     metaFiles <- io.listFiles(path)
@@ -118,7 +131,7 @@ class MetadataTool(io: FileManager) {
                      .get[Path]("path")
                      .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.toString}"))
                  }.toRight(NotFoundError(s"Couldn't find any JSON line in file $file"))
-    path <- extracted
+    path <- extracted.tap(_.logValueDebug(s"Extracted following path from file $file"))
   } yield path
 
   private def parseLine(line: String): FileLine = parse(line).fold(_ => StringLine(line), json => JsonLine(json))
