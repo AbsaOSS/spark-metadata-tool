@@ -97,10 +97,12 @@ object ArgumentParser {
   }
 
   def initLogging(verbose: Boolean, logToFile: Boolean): Either[AppError, Unit] = Try {
-    val logLevel = if (verbose) Level.DEBUG else Level.INFO
-    LogManager.getRootLogger.setLevel(logLevel)
-    LogManager.getLogger("org.apache.http").setLevel(Level.INFO)
-    LogManager.getLogger("software.amazon.awssdk").setLevel(Level.INFO)
+
+    if (verbose) {
+      LogManager.getRootLogger.setLevel(Level.DEBUG)
+      LogManager.getLogger("org.apache.http").setLevel(Level.INFO)
+      LogManager.getLogger("software.amazon.awssdk").setLevel(Level.INFO)
+    }
 
     if (logToFile) {
       val fa = new FileAppender()
