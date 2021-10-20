@@ -67,7 +67,10 @@ object ArgumentParser {
         .text("verbose"),
       opt[Unit]("log-to-file")
         .action((_, c) => c.copy(logToFile = true))
-        .text("logtofile")
+        .text("logtofile"),
+      opt[Unit]("dry-run")
+        .action((_, c) => c.copy(dryRun = true))
+        .text("dry run")
     )
   }
 
@@ -80,7 +83,8 @@ object ArgumentParser {
         filesystem = Unix,
         keepBackup = false,
         verbose = false,
-        logToFile = false
+        logToFile = false,
+        dryRun = false
       )
     )
 

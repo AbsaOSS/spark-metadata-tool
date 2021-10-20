@@ -54,14 +54,10 @@ object Application extends App {
              .getFirstPartitionKey(conf.path)
     _ <-
       filesToFix
-        .traverse(path => fixFile(path, tool, conf.path, key))
+        .traverse(path => fixFile(path, tool, conf.path, conf.dryRun, key))
         .tap(_.logInfo("Fixed all files"))
     backupPath = new Path(s"${conf.path}/$BackupDir")
-    _ <- if (conf.keepBackup) { logger.info(s"Keeping backup in $backupPath").asRight }
-         else {
-           logger.info(s"Deleting backup from $backupPath")
-           deleteBackup(backupPath, io).tap(_.logInfo(s"Deleted backup from $backupPath"))
-         }
+    _         <- if (conf.keepBackup) ().asRight else tool.deleteBackup(backupPath, conf.dryRun)
   } yield ()
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
@@ -70,24 +66,19 @@ object Application extends App {
     io       <- initFileManager(config.filesystem, s3Client)
   } yield (config, io, new MetadataTool(io))
 
-  private def deleteBackup(backupDir: Path, io: FileManager): Either[AppError, Unit] = for {
-    backupFiles <- io.listFiles(backupDir).tap(_.logDebug(s"Checked ${backupDir.toString} for backup files to delete"))
-    _           <- io.delete(backupFiles).tap(_.logDebug(s"Deleted backup files in ${backupDir.toString}"))
-    _           <- io.delete(Seq(backupDir)).tap(_.logDebug(s"Deleted backup directory : ${backupDir.toString}"))
-  } yield ()
-
   private def fixFile(
     path: Path,
     metaTool: MetadataTool,
     newBasePath: Path,
+    dryRun: Boolean,
     firstPartitionKey: Option[String]
   ): Either[AppError, Unit] = (for {
     _      <- logger.info(s"Processing file $path").asRight
     parsed <- metaTool.loadFile(path)
-    _      <- metaTool.backupFile(path)
+    _      <- metaTool.backupFile(path, dryRun)
     fixed <-
       metaTool.fixPaths(parsed, newBasePath, firstPartitionKey).tap(_.logDebug(s"Fixed paths in file ${path.toString}"))
-    _ <- metaTool.saveFile(path, fixed)
+    _ <- metaTool.saveFile(path, fixed, dryRun)
   } yield ()).tap(_.logInfo(s"Done processing file ${path.toString}"))
 
   def initS3(fs: TargetFilesystem): Either[AppError, Option[S3Client]] = fs match {

@@ -86,8 +86,16 @@ class MetadataTool(io: FileManager) {
     * @return
     *   Unit or an error
     */
-  def saveFile(path: Path, data: Seq[FileLine]): Either[AppError, Unit] =
-    io.write(path, data.map(_.toString)).tap(_.logDebug(s"Saved file $path"))
+  def saveFile(path: Path, data: Seq[FileLine], dryRun: Boolean): Either[AppError, Unit] = (
+    if (dryRun) {
+      val linesToShow = 10
+      logger.info(s"Saving file ${path.toString} (showing first $linesToShow lines) :")
+      logger.info(data.take(linesToShow).mkString("\n"))
+      ().asRight
+    } else {
+      io.write(path, data.map(_.toString))
+    }
+  ).tap(_.logDebug(s"Saved file $path"))
 
   /** Finds name of the top level partition, if it exists.
     *
@@ -115,9 +123,27 @@ class MetadataTool(io: FileManager) {
              .asRight
   } yield key
 
-  def backupFile(path: Path): Either[AppError, Unit] =
-    io.copy(path, new Path(path.toString.replaceFirst(SparkMetadataDir, BackupDir)))
-      .tap(_.logDebug(s"Created backup of file $path"))
+  def backupFile(path: Path, dryRun: Boolean): Either[AppError, Unit] = (
+    if (dryRun) {
+      ().asRight
+    } else {
+      io.copy(path, new Path(path.toString.replaceFirst(SparkMetadataDir, BackupDir)))
+    }
+  ).tap(_.logDebug(s"Created backup of file $path"))
+
+  def deleteBackup(backupDir: Path, dryRun: Boolean): Either[AppError, Unit] =
+    if (dryRun) {
+      logger.info(s"Checked ${backupDir.toString} for backup files to delete")
+      logger.info(s"Deleted backup files in ${backupDir.toString}")
+      logger.info(s"Deleted backup directory : ${backupDir.toString}").asRight
+    } else {
+      for {
+        backupFiles <-
+          io.listFiles(backupDir).tap(_.logDebug(s"Checked ${backupDir.toString} for backup files to delete"))
+        _ <- io.delete(backupFiles).tap(_.logDebug(s"Deleted backup files in ${backupDir.toString}"))
+        _ <- io.delete(Seq(backupDir)).tap(_.logDebug(s"Deleted backup directory : ${backupDir.toString}"))
+      } yield ()
+    }
 
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
     metaFiles <- io.listFiles(path)

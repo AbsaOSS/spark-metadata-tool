@@ -78,7 +78,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     (fileManager.write _).expects(path, *).returning(err.asLeft)
 
-    val res = metadataTool.saveFile(path, Seq.empty)
+    val res = metadataTool.saveFile(path, Seq.empty, dryRun = false)
 
     res.left.value shouldBe err
   }
@@ -243,6 +243,74 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val res = metadataTool.getFirstPartitionKey(path)
 
     res.left.value shouldBe expected
+  }
+
+  "backupFile" should "not perform any IO action in dry run" in {
+    val path = s3BasePath
+
+    val copyCall = (fileManager.copy _).expects(*, *).returning(().asRight)
+
+    metadataTool.backupFile(path, dryRun = true)
+
+    copyCall.never()
+  }
+
+  it should "create copy of the file in wet run" in {
+    val path = s3BasePath
+
+    val copyCall = (fileManager.copy _).expects(*, *).returning(().asRight)
+
+    metadataTool.backupFile(path, dryRun = false)
+
+    copyCall.once()
+  }
+
+  "saveFile" should "not perform any IO action in dry run" in {
+    val path = s3BasePath
+
+    val writeCall = (fileManager.write _).expects(*, *).returning(().asRight)
+
+    metadataTool.saveFile(path, Seq.empty, dryRun = true)
+
+    writeCall.never()
+  }
+
+  it should "write the file contents in wet run" in {
+    val path = s3BasePath
+
+    val writeCall = (fileManager.write _).expects(*, *).returning(().asRight)
+
+    metadataTool.saveFile(path, Seq.empty, dryRun = false)
+
+    writeCall.once()
+  }
+
+  "deleteBackup" should "not perform any IO action in dry run" in {
+    val path  = s3BasePath
+    val files = Seq(new Path("/backup/file/to/delete"))
+
+    val listCall   = (fileManager.listFiles _).expects(*).returning(files.asRight)
+    val deleteCall = (fileManager.delete _).expects(*).returning(().asRight)
+
+    metadataTool.deleteBackup(path, dryRun = true)
+
+    listCall.never()
+    deleteCall.never()
+  }
+
+  it should "delete backup files and directory in wet run" in {
+    val path  = s3BasePath
+    val files = Seq(new Path("/backup/file/to/delete"))
+
+    val listCall      = (fileManager.listFiles _).expects(path).returning(files.asRight)
+    val deleteCall    = (fileManager.delete _).expects(files).returning(().asRight)
+    val deleteDirCall = (fileManager.delete _).expects(Seq(path)).returning(().asRight)
+
+    metadataTool.deleteBackup(path, dryRun = false)
+
+    listCall.once()
+    deleteCall.once()
+    deleteDirCall.once()
   }
 
 }
