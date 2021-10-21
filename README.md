@@ -31,7 +31,7 @@ Only the base path is changed, **no checks are performed** whether the `.parquet
 
 ## Usage
 ### Obtaining
-The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool-assembly_2.13-x.y.z.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
+The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool_2.13-x.y.z-assembly.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
 
 ### Building
 To build the package locally, use command
@@ -42,7 +42,7 @@ sbt clean assembly
 ### Running
 Run the application by executing the JAR with desired arguments, e.g.
 ```
-java -jar spark-metadata-tool-assembly_2.13-x.y.z.jar --path "s3://bucket/foo/baz
+java -jar spark-metadata-tool_2.13-x.y.z-assembly.jar --path "s3://bucket/foo/baz
 ```
 
 The target filesystem is derived automatically from the provided path:
