@@ -55,7 +55,7 @@ lazy val root = (project in file("."))
     javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint"),
     releaseVersionBump   := sbtrelease.Version.Bump.Minor,
     assembly / mainClass := Some("za.co.absa.spark_metadata_tool.Application"),
-    assembly / test      := (Test / test).value,
+    assembly / test      := {},
     mergeStrategy,
     assembly / artifact := {
       val art = (assembly / artifact).value
