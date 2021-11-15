@@ -27,9 +27,11 @@ import scopt.OParser
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
-import za.co.absa.spark_metadata_tool.model.ArgumentParserError
+import za.co.absa.spark_metadata_tool.model.FixPaths
 import za.co.absa.spark_metadata_tool.model.Hdfs
 import za.co.absa.spark_metadata_tool.model.InitializationError
+import za.co.absa.spark_metadata_tool.model.Merge
+import za.co.absa.spark_metadata_tool.model.ParsingError
 import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
@@ -55,10 +57,31 @@ object ArgumentParser {
     OParser.sequence(
       programName("spark-metadata-tool"),
       head("spark-metadata-tool"),
-      opt[Path]('p', "path")
-        .required()
-        .action((x, c) => c.copy(path = x))
-        .text("full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)"),
+      cmd("fix-paths")
+        .action((_, c) => c.copy(mode = FixPaths))
+        .text("Fix paths in Spark metadata files to match current location")
+        .children(
+          opt[Path]('p', "path")
+            .required()
+            .action((x, c) => c.copy(path = x))
+            .text("full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)")
+        ),
+      note(sys.props("line.separator")),
+      cmd("merge")
+        .action((_, c) => c.copy(mode = Merge))
+        .text("Merge Spark metadata files from 2 directories")
+        .children(
+          opt[Path]('o', "old")
+            .required()
+            .action((x, c) => c.copy(oldPath = x.some))
+            .text("full path to the old data folder, including filesystem (e.g. s3://bucket/foo/old)"),
+          opt[Path]('n', "new")
+            .required()
+            .action((x, c) => c.copy(path = x))
+            .text("full path to the new data folder, including filesystem (e.g. s3://bucket/foo/new)")
+        ),
+      note(sys.props("line.separator")),
+      note("Other options:"),
       opt[Unit]('k', "keep-backup")
         .action((_, c) => c.copy(keepBackup = true))
         .text("persist backup files after successful run"),
@@ -80,6 +103,8 @@ object ArgumentParser {
       parser,
       args,
       AppConfig(
+        mode = FixPaths,
+        oldPath = None,
         path = new Path("default"),
         filesystem = Unix,
         keepBackup = false,
@@ -90,7 +115,7 @@ object ArgumentParser {
     )
 
     parseResult
-      .fold(Left(ArgumentParserError("Couldn't parse provided arguments")): Either[AppError, AppConfig]) { conf =>
+      .fold(Left(ParsingError("Couldn't parse provided arguments", None)): Either[AppError, AppConfig]) { conf =>
         for {
           _  <- initLogging(conf.verbose, conf.logToFile).tap(_.logDebug("Initialized logging"))
           fs <- getFsFromPath(conf.path.toString).tap(_.logValueDebug("Derived filesystem from path"))

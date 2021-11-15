@@ -27,12 +27,15 @@ import za.co.absa.spark_metadata_tool.io.UnixFileManager
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.AppErrorWithThrowable
+import za.co.absa.spark_metadata_tool.model.FixPaths
 import za.co.absa.spark_metadata_tool.model.Hdfs
 import za.co.absa.spark_metadata_tool.model.InitializationError
+import za.co.absa.spark_metadata_tool.model.Merge
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
+import za.co.absa.spark_metadata_tool.model.UnknownError
 
 import scala.util.Try
 import scala.util.chaining._
@@ -47,18 +50,53 @@ object Application extends App {
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args).tap(_.logInfo("Initialized application"))
-    metaPath          = new Path(s"${conf.path}/$SparkMetadataDir")
-    filesToFix       <- io.listFiles(metaPath).tap(_.logInfo(s"Checked ${metaPath.toString} for Spark metadata files"))
-    key <- tool
-             .tap(_ => logger.debug("Trying to determine first partition key"))
-             .getFirstPartitionKey(conf.path)
-    _ <-
-      filesToFix
-        .traverse(path => fixFile(path, tool, conf.path, conf.dryRun, key))
-        .tap(_.logInfo("Fixed all files"))
+    _ <- conf.mode match {
+           case FixPaths => fixPaths(conf, io, tool)
+           case Merge    => mergeMetadataFiles(conf, io, tool)
+         }
     backupPath = new Path(s"${conf.path}/$BackupDir")
     _         <- if (conf.keepBackup) ().asRight else tool.deleteBackup(backupPath, conf.dryRun)
   } yield ()
+
+  private def fixPaths(config: AppConfig, io: FileManager, tool: MetadataTool): Either[AppError, Unit] = {
+    val metaPath = new Path(s"${config.path}/$SparkMetadataDir")
+
+    for {
+      filesToFix <- io.listFiles(metaPath).tap(_.logInfo(s"Checked ${metaPath.toString} for Spark metadata files"))
+      key <- tool
+               .tap(_ => logger.debug("Trying to determine first partition key"))
+               .getFirstPartitionKey(config.path)
+      _ <-
+        filesToFix
+          .traverse(path => fixFile(path, tool, config.path, config.dryRun, key))
+          .tap(_.logInfo("Fixed all files"))
+    } yield ()
+  }
+
+  private def mergeMetadataFiles(config: AppConfig, io: FileManager, tool: MetadataTool): Either[AppError, Unit] = {
+    val newMeta = new Path(s"${config.path}/$SparkMetadataDir")
+
+    for {
+      newFiles <-
+        io.listFiles(newMeta)
+          .tap(_.logInfo(s"Checked the new metadata directory '${newMeta.toString}' for Spark metadata files"))
+      filteredNewFiles <- tool.filterLastCompact(newFiles)
+      targetFile <- filteredNewFiles.headOption
+                      .toRight(NotFoundError(s"No files in target metadata folder"))
+                      .tap(_.logValueInfo(s"Found target file to write merge changes"))
+      oldPath <-
+        config.oldPath.toRight(UnknownError(s"Path to the old data directory was not set for run mode ${config.mode}"))
+      oldMeta = new Path(s"$oldPath/$SparkMetadataDir")
+      oldFiles <-
+        io.listFiles(oldMeta)
+          .tap(_.logInfo(s"Checked the old metadata directory '${oldMeta.toString}' for Spark metadata files"))
+      toMerge <-
+        tool.filterLastCompact(oldFiles).tap(_.logValueInfo(s"Old files to be merged into the new metadata folder"))
+      _      <- tool.backupFile(targetFile.path, config.dryRun)
+      merged <- tool.merge(toMerge, targetFile)
+      _      <- tool.saveFile(targetFile.path, merged, config.dryRun)
+    } yield ()
+  }
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
     config   <- ArgumentParser.createConfig(args)

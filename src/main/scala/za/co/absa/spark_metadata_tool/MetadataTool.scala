@@ -26,10 +26,11 @@ import za.co.absa.spark_metadata_tool.PathDerivation._
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.AppError
 import za.co.absa.spark_metadata_tool.model.FileLine
+import za.co.absa.spark_metadata_tool.model.JsonError
 import za.co.absa.spark_metadata_tool.model.JsonLine
+import za.co.absa.spark_metadata_tool.model.MetadataFile
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
-import za.co.absa.spark_metadata_tool.model.UnknownError
 
 import scala.util.chaining._
 
@@ -145,6 +146,30 @@ class MetadataTool(io: FileManager) {
       } yield ()
     }
 
+  def merge(oldFiles: Seq[MetadataFile], targetFile: MetadataFile): Either[AppError, Seq[FileLine]] = for {
+    targetFileContent <- loadFile(targetFile.path)
+    version <- targetFileContent.headOption
+                 .tap(v => logger.debug(s"Version value from the target file $targetFile: $v"))
+                 .toRight(NotFoundError(s"No content in file ${targetFile.path}"))
+    toAppend <- targetFileContent
+                  .drop(1)
+                  .tap(c => logger.debug(s"Will append ${c.size} lines from the target file $targetFile"))
+                  .asRight
+    oldFilesContent <- oldFiles.sorted.traverse(f => loadFile(f.path))
+    toPrepend <- oldFilesContent
+                   .flatMap(_.drop(1))
+                   .tap(c => logger.debug(s"Will merge ${c.size} lines from the old metadata files"))
+                   .asRight
+  } yield Seq(version) ++ toPrepend ++ toAppend
+
+  def filterLastCompact(files: Seq[Path]): Either[AppError, Seq[MetadataFile]] = (for {
+    parsedFiles <- files.traverse(MetadataFile.fromPath)
+    sortedFiles  = parsedFiles.sorted
+    lastCompact =
+      sortedFiles.findLast(_.compact).tap(file => logger.debug(s"Last .compact file: ${file.map(_.toString)}"))
+  } yield lastCompact.fold(sortedFiles)(lc => sortedFiles.dropWhile(_ != lc)))
+    .tap(_.logValueDebug(s"Last .compact file (if present) and following files"))
+
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
     metaFiles <- io.listFiles(path)
     // avoid loading .compact files due to their potential size
@@ -185,7 +210,11 @@ class MetadataTool(io: FileManager) {
                  firstPartitionKey
                )
     fixedLine <-
-      line.cursor.downField("path").set(newPath.toString.asJson).top.toRight(UnknownError("We need better error!"))
+      line.cursor
+        .downField("path")
+        .set(newPath.toString.asJson)
+        .top
+        .toRight(JsonError(s"Error when trying to set the `path` field in line $line with cursor ${line.cursor}"))
   } yield JsonLine(fixedLine)
 
   private def fixPath(oldPath: Path, newBasePath: Path, firstPartitionKey: Option[String]): Either[AppError, Path] =
