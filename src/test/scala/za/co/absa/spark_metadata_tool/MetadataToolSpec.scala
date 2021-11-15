@@ -315,27 +315,27 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   "merge" should "merge multiple metadata files with correct order" in {
-    val targetFile = MetadataFile(9, true, new Path("hdfs://path/new/_spark_metadata/9.compact"))
+    val targetFile = MetadataFile(9, compact = true, new Path("hdfs://path/new/_spark_metadata/9.compact"))
     val targetLines = Seq(
       StringLine("v1"),
-      JsonLine(parse(validLine(new Path("hdfs://path/from/target/test.paruqet"))).value)
+      JsonLine(parse(validLine(new Path("hdfs://path/from/target/test.parquet"))).value)
     )
-    val oldFile1 = MetadataFile(1, false, new Path("hdfs://path/old/_spark_metadata/1"))
-    val oldFile2 = MetadataFile(2, false, new Path("hdfs://path/old/_spark_metadata/2"))
+    val oldFile1 = MetadataFile(1, compact = false, new Path("hdfs://path/old/_spark_metadata/1"))
+    val oldFile2 = MetadataFile(2, compact = false, new Path("hdfs://path/old/_spark_metadata/2"))
     val oldLines1 = Seq(
       StringLine("v1"),
-      JsonLine(parse(validLine(new Path("hdfs://path/from/old1/test.paruqet"))).value)
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old1/test.parquet"))).value)
     )
     val oldLines2 = Seq(
       StringLine("v1"),
-      JsonLine(parse(validLine(new Path("hdfs://path/from/old2/test.paruqet"))).value)
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old2/test.parquet"))).value)
     )
 
     val expected = Seq(
       StringLine("v1"),
-      JsonLine(parse(validLine(new Path("hdfs://path/from/old1/test.paruqet"))).value),
-      JsonLine(parse(validLine(new Path("hdfs://path/from/old2/test.paruqet"))).value),
-      JsonLine(parse(validLine(new Path("hdfs://path/from/target/test.paruqet"))).value)
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old1/test.parquet"))).value),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old2/test.parquet"))).value),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/target/test.parquet"))).value)
     )
 
     (fileManager.readAllLines _).expects(targetFile.path).returning(targetLines.map(_.toString).asRight).once()
@@ -351,19 +351,19 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   "filterLastCompact" should "return all metadata files in correct order if no .compact file was present" in {
     val paths = Seq(
-      new Path("hdfs://path/to/rooot/_spark_metadata/0"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/3"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/2"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/1"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/4")
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/3"),
+      new Path("hdfs://path/to/root/_spark_metadata/2"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/4")
     )
 
     val expected = Seq(
-      MetadataFile(0, false, new Path("hdfs://path/to/rooot/_spark_metadata/0")),
-      MetadataFile(1, false, new Path("hdfs://path/to/rooot/_spark_metadata/1")),
-      MetadataFile(2, false, new Path("hdfs://path/to/rooot/_spark_metadata/2")),
-      MetadataFile(3, false, new Path("hdfs://path/to/rooot/_spark_metadata/3")),
-      MetadataFile(4, false, new Path("hdfs://path/to/rooot/_spark_metadata/4"))
+      MetadataFile(0, compact = false, new Path("hdfs://path/to/root/_spark_metadata/0")),
+      MetadataFile(1, compact = false, new Path("hdfs://path/to/root/_spark_metadata/1")),
+      MetadataFile(2, compact = false, new Path("hdfs://path/to/root/_spark_metadata/2")),
+      MetadataFile(3, compact = false, new Path("hdfs://path/to/root/_spark_metadata/3")),
+      MetadataFile(4, compact = false, new Path("hdfs://path/to/root/_spark_metadata/4"))
     )
 
     val res = metadataTool.filterLastCompact(paths)
@@ -373,18 +373,18 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
   it should "return latest .compact file and all following metadata files in correct order" in {
     val paths = Seq(
-      new Path("hdfs://path/to/rooot/_spark_metadata/3.compact"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/0"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/3"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/2"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/1"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/1.compact"),
-      new Path("hdfs://path/to/rooot/_spark_metadata/4")
+      new Path("hdfs://path/to/root/_spark_metadata/3.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/3"),
+      new Path("hdfs://path/to/root/_spark_metadata/2"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/4")
     )
 
     val expected = Seq(
-      MetadataFile(3, true, new Path("hdfs://path/to/rooot/_spark_metadata/3.compact")),
-      MetadataFile(4, false, new Path("hdfs://path/to/rooot/_spark_metadata/4"))
+      MetadataFile(3, compact = true, new Path("hdfs://path/to/root/_spark_metadata/3.compact")),
+      MetadataFile(4, compact = false, new Path("hdfs://path/to/root/_spark_metadata/4"))
     )
 
     val res = metadataTool.filterLastCompact(paths)

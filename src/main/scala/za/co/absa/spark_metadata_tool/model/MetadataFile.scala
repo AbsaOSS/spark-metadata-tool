@@ -18,7 +18,6 @@ package za.co.absa.spark_metadata_tool.model
 
 import cats.implicits._
 import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.ParsingError
 
 import scala.util.Try
 
