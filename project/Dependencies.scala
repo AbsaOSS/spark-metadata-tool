@@ -38,7 +38,7 @@ object Dependencies {
   lazy val hadoopHdfs = ("org.apache.hadoop" % "hadoop-hdfs" % "2.10.1")
     .exclude("asm", "asm")
     .exclude("org.mortbay.jetty", "servlet-api")
-  lazy val hadoopMiniCluster = ("org.apache.hadoop" % "hadoop-minicluster" % "2.10.1")
+  lazy val hadoopMiniCluster = ("org.apache.hadoop" % "hadoop-minicluster" % "2.10.1" % Test)
 
   lazy val dependencies: Seq[ModuleID] = Seq(
     aws,
