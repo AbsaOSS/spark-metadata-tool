@@ -52,23 +52,13 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
     }.fold(err => Left(IoError(err.getMessage, err.some)), _ => Right(()))
 
   override def copy(origin: Path, destination: Path): Either[IoError, Unit] = Try {
-
     val bkpDir = destination.getParent
-    val from = origin
-    val to = destination
 
     if (hdfs.exists(bkpDir)) {
       hdfs.mkdirs(bkpDir)
     }
 
-    org.apache.hadoop.fs.FileUtil.copy(
-      hdfs,
-      from,
-      hdfs,
-      to,
-      false,
-      hdfs.getConf
-    )
+    org.apache.hadoop.fs.FileUtil.copy(hdfs, origin, hdfs, destination, false, hdfs.getConf)
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
   def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
