@@ -12,6 +12,7 @@ The tool solves this issue by fixing all paths in Spark metadata files to point 
 - Currently supported file systems:
     - S3
     - Unix
+    - Hdfs
 
 Note that the tool doesn't perform any validation and assumes files are in the correct state. Consider the following example:
 
@@ -46,8 +47,9 @@ java -jar spark-metadata-tool_2.13-x.y.z-assembly.jar --path "s3://bucket/foo/ba
 ```
 
 The target filesystem is derived automatically from the provided path:
-- `s3://`   for S3 storage
-- `/`       for Unix filesystem
+- `s3://`             for S3 storage
+- `/`                 for Unix filesystem
+- `hdfs://<url:port>` for HDFS filesystem
 
 ### Complete list of allowed arguments:
 ```
@@ -65,6 +67,9 @@ Usage: spark-metadata-tool [options]
 To be able to perform any operation on S3 you must provide AWS credentials. The easiest way to do so is to set environment variables
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The application will read them automatically. For more information, as well as other
 ways to provide credentials, see [Using credentials](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials.html)
+
+### HDFS Set up
+To be able to perform any operation on HDFS you must set environment variable `HADOOP_CONF_DIR`.
 
 ## Linking
 This project is not meant to be linked against, as it is being published as an executable fat jar. 
