@@ -80,7 +80,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
     resultDefined.isRight shouldBe true
     expectedDefined.isRight shouldBe true
     resultDefined.value.isEmpty shouldBe false
-    resultDefined.value.map(removeRoot(_, testDataHdfsRootDir)) shouldBe
+    resultDefined.value.map(removeRoot(_, testDataHdfsRootDir)) should contain theSameElementsAs
       expectedDefined.value.map(removeRoot(_, testDataRootDir))
   }
 
