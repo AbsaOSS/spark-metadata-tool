@@ -32,10 +32,7 @@ object Dependencies {
   lazy val scalaMock    = "org.scalamock"           %% "scalamock"     % "5.1.0" % Test
   lazy val scopt        = "com.github.scopt"        %% "scopt"         % "4.0.1"
 
-  lazy val hadoopCommon = ("org.apache.hadoop" % "hadoop-common" % "2.10.1")
-    .exclude("asm", "asm")
-    .exclude("org.mortbay.jetty", "servlet-api")
-  lazy val hadoopHdfs = ("org.apache.hadoop" % "hadoop-hdfs" % "2.10.1")
+  lazy val hadoop = ("org.apache.hadoop" % "hadoop-common" % "2.10.1")
     .exclude("asm", "asm")
     .exclude("org.mortbay.jetty", "servlet-api")
   lazy val hadoopMiniCluster = ("org.apache.hadoop" % "hadoop-minicluster" % "2.10.1" % Test)
@@ -46,8 +43,7 @@ object Dependencies {
     circeCore,
     circeGeneric,
     circeParser,
-    hadoopCommon,
-    hadoopHdfs,
+    hadoop,
     hadoopMiniCluster,
     log4j,
     log4jApi,
