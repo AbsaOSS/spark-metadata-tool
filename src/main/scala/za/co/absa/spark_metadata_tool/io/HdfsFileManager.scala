@@ -18,7 +18,7 @@ package za.co.absa.spark_metadata_tool.io
 
 import org.log4s.Logger
 import za.co.absa.spark_metadata_tool.model.IoError
-import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import cats.implicits._
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 
@@ -58,7 +58,7 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
       hdfs.mkdirs(bkpDir)
     }
 
-    org.apache.hadoop.fs.FileUtil.copy(hdfs, origin, hdfs, destination, false, hdfs.getConf)
+    FileUtil.copy(hdfs, origin, hdfs, destination, false, hdfs.getConf)
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
   def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
