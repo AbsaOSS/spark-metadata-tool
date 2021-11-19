@@ -19,6 +19,7 @@ package za.co.absa.spark_metadata_tool
 import cats.implicits._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.security.UserGroupInformation
 import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
@@ -86,8 +87,12 @@ object Application extends App {
   def initHdfs(): Either[AppError, FileSystem] = Try {
     val hadoopConfDir = sys.env("HADOOP_CONF_DIR")
     val coreSiteXmlPath = s"$hadoopConfDir/core-site.xml"
+    val hdfsSiteXmlPath = s"$hadoopConfDir/hdfs-site.xml"
     val hadoopConfiguration = new Configuration()
     hadoopConfiguration.addResource(new Path(coreSiteXmlPath))
+    hadoopConfiguration.addResource(new Path(hdfsSiteXmlPath))
+    UserGroupInformation.setConfiguration(hadoopConfiguration)
+
     FileSystem.get(hadoopConfiguration)
   }.toEither.leftMap(err => InitializationError("Failed to initialize Hdfs file system", err.some))
 
