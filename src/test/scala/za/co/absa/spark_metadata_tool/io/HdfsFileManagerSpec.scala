@@ -185,6 +185,5 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
       not contain s"/$topLevelDirOne/$fileOneInDirOne"
   }
 
-
   private def removeRoot(path: Path, rootPrefix: String): String = path.toString.replace(rootPrefix, "")
 }

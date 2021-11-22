@@ -12,7 +12,7 @@ The tool solves this issue by fixing all paths in Spark metadata files to point 
 - Currently supported file systems:
     - S3
     - Unix
-    - Hdfs
+    - HDFS
 
 Note that the tool doesn't perform any validation and assumes files are in the correct state. Consider the following example:
 

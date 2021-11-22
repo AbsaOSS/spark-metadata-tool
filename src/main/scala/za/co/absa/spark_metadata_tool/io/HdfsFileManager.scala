@@ -54,7 +54,7 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
   override def copy(origin: Path, destination: Path): Either[IoError, Unit] = Try {
     val bkpDir = destination.getParent
 
-    if (hdfs.exists(bkpDir)) {
+    if (!hdfs.exists(bkpDir)) {
       hdfs.mkdirs(bkpDir)
     }
 
