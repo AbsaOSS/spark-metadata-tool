@@ -19,6 +19,7 @@ object Dependencies {
 
   val circeVersion = "0.14.1"
   val log4jVersion = "2.14.1"
+  val hadoopVersion = "2.10.1"
 
   lazy val aws          = "software.amazon.awssdk"   % "s3"            % "2.17.55"
   lazy val cats         = "org.typelevel"           %% "cats-core"     % "2.3.0"
@@ -32,9 +33,11 @@ object Dependencies {
   lazy val scalaMock    = "org.scalamock"           %% "scalamock"     % "5.1.0" % Test
   lazy val scopt        = "com.github.scopt"        %% "scopt"         % "4.0.1"
 
-  lazy val hadoop = ("org.apache.hadoop" % "hadoop-common" % "2.10.1")
+  lazy val hadoopCommon = ("org.apache.hadoop" % "hadoop-common" % hadoopVersion)
     .exclude("asm", "asm")
     .exclude("org.mortbay.jetty", "servlet-api")
+  lazy val hadoopHdfsClient = "org.apache.hadoop" % "hadoop-hdfs-client" % hadoopVersion
+  lazy val hadoopMiniCluster = "org.apache.hadoop" % "hadoop-minicluster" % hadoopVersion % Test
 
   lazy val dependencies: Seq[ModuleID] = Seq(
     aws,
@@ -42,7 +45,9 @@ object Dependencies {
     circeCore,
     circeGeneric,
     circeParser,
-    hadoop,
+    hadoopCommon,
+    hadoopHdfsClient,
+    hadoopMiniCluster,
     log4j,
     log4jApi,
     log4s,
