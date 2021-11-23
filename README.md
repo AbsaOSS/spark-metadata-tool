@@ -53,7 +53,7 @@ In every run mode, the tool offers following universal features:
 - Currently supported file systems:
     - S3
     - Unix
-
+    - HDFS
 ## Usage
 ### Obtaining
 The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool_2.13-x.y.z-assembly.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
@@ -71,8 +71,9 @@ java -jar spark-metadata-tool_2.13-x.y.z-assembly.jar fix-paths --path "s3://buc
 ```
 
 The target filesystem is derived automatically from the provided path:
-- `s3://`   for S3 storage
-- `/`       for Unix filesystem
+- `s3://`             for S3 storage
+- `/`                 for Unix filesystem
+- `hdfs://<url:port>` for HDFS filesystem
 
 ### Complete list of allowed arguments:
 ```
@@ -101,6 +102,9 @@ Other options:
 To be able to perform any operation on S3 you must provide AWS credentials. The easiest way to do so is to set environment variables
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The application will read them automatically. For more information, as well as other
 ways to provide credentials, see [Using credentials](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials.html)
+
+### HDFS Set up
+To be able to perform any operation on HDFS you must set environment variable `HADOOP_CONF_DIR`.
 
 ## Linking
 This project is not meant to be linked against, as it is being published as an executable fat jar. 
