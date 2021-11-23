@@ -147,7 +147,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
     )
     val _ = hdfsFileManager.copy(
       new Path(s"$testDataHdfsRootDir/$topLevelDirOne/$fileOneInDirOne"),
-      new Path(s"$testDataHdfsRootDir/$topLevelDirTwo")
+      new Path(s"$testDataHdfsRootDir/$topLevelDirTwo/$fileOneInDirOne")
     )
     val filesAfterCopy = hdfsFileManager.listFiles(
       new Path(s"$testDataHdfsRootDir/$topLevelDirTwo")
@@ -161,6 +161,30 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
 
     filesAfterCopy.value.map(removeRoot(_, testDataHdfsRootDir)) should
       contain(s"/$topLevelDirTwo/$fileOneInDirOne")
+  }
+
+  "Copy" should "should copy file from source to destination and create destination dir if does not exist" in {
+    val filesBeforeCopy = hdfsFileManager.listFiles(
+      new Path(s"$testDataHdfsRootDir/$topLevelDirTwo")
+    )
+    val nonExistingDestinationDir = s"$testDataHdfsRootDir/nonExistingDir/nonExistingSubDir"
+
+    val _ = hdfsFileManager.copy(
+      new Path(s"$testDataHdfsRootDir/$topLevelDirOne/$fileOneInDirOne"),
+      new Path(s"$nonExistingDestinationDir/$fileOneInDirOne")
+    )
+    val filesAfterCopy = hdfsFileManager.listFiles(
+      new Path(nonExistingDestinationDir)
+    )
+
+    filesBeforeCopy.isRight shouldBe true
+    filesBeforeCopy.value.isEmpty shouldBe true
+    filesAfterCopy.isRight shouldBe true
+    filesAfterCopy.value.isEmpty shouldBe false
+    filesAfterCopy.value.size shouldBe filesBeforeCopy.value.size + 1
+
+    filesAfterCopy.value.map(removeRoot(_, nonExistingDestinationDir)) should
+      contain(s"/$fileOneInDirOne")
   }
 
   "Delete" should "should delete file" in {
