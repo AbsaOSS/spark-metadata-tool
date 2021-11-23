@@ -115,7 +115,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
     resultSuccess.value shouldBe expectedSuccess.value
   }
 
-  "Write" should "should write lines into the file" in {
+  "Write" should "write lines into the file" in {
     val dataToWrite = Seq("111", "222")
     val pathToDir = s"$testDataHdfsRootDir/$topLevelDirOne"
 
@@ -141,7 +141,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
     resultNonExistingFile.value should contain theSameElementsAs dataToWrite
   }
 
-  "Copy" should "should copy file from source to destination" in {
+  "Copy" should "copy file from source to destination" in {
     val filesBeforeCopy = hdfsFileManager.listFiles(
       new Path(s"$testDataHdfsRootDir/$topLevelDirTwo")
     )
@@ -163,7 +163,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
       contain(s"/$topLevelDirTwo/$fileOneInDirOne")
   }
 
-  "Copy" should "should copy file from source to destination and create destination dir if does not exist" in {
+  "Copy" should "copy file from source to destination and create destination dir if does not exist" in {
     val filesBeforeCopy = hdfsFileManager.listFiles(
       new Path(s"$testDataHdfsRootDir/$topLevelDirTwo")
     )
@@ -187,7 +187,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
       contain(s"/$fileOneInDirOne")
   }
 
-  "Delete" should "should delete file" in {
+  "Delete" should "delete file" in {
     val filesBeforeDelete = hdfsFileManager.listFiles(
       new Path(s"$testDataHdfsRootDir/$topLevelDirOne")
     )
