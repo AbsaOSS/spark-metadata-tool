@@ -6,13 +6,10 @@ Spark Structured Streaming references data files using absolute paths, which mak
 The tool solves this issue by fixing all paths in Spark metadata files to point to the current location of the data.
 
 ## Features
+The tool currently provides 2 run modes - `fix-paths` and `merge`.
+
+### fix-paths
 - Fixes all paths in metadata files to point to the current location of the data
-- Creates backup of each file before processing
-- Backup is deleted after a successful run(can be overridden to keep the backup)
-- Currently supported file systems:
-    - S3
-    - Unix
-    - HDFS
 
 Note that the tool doesn't perform any validation and assumes files are in the correct state. Consider the following example:
 
@@ -30,6 +27,33 @@ s3://bucket/new_root/partition1=x/partition2=y/file.parquet
 
 Only the base path is changed, **no checks are performed** whether the `.parquet` files or partition folders actually exist.
 
+### merge
+- Merges content of the metadata files into the files in another Spark metadata directory
+
+Example:
+- Old `_spark_metadata` directory containing metadata files `0`, `1`, `2`, `3`, `3.compact`, `4`, `5`
+- New `_spark_metadata` directory containing metadata files `0`, `1`, `2`, `3`, `4`, `5`, `5.compact`, `6`
+
+1. The tool finds the target file, into which it will write the data. This is either the latest `.compact` file, or earliest regular file, if no `.compact` files are present.
+In the above example, merged data would be written into file `5.compact`.
+2. The tool determines, which files from the old `_spark_metadata` directory use for merging. They're either the latest `.compact` file and all following regular files in order,
+or simply all regular files, in case no `.compact` files are present.
+3. The contents of the old metadata files are merged into the target file. For the example above, the result would be as follows:
+```
+version                 // First line taken from target file, i.e. `5.compact`.
+lines from 3.compact    // Contents of the lates .compact file from the old metadata directory. Version is omitted.
+lines from 4            // Contents of the following regular file from the old metadata directory. Version is omitted.
+lines from 5            // Same as with `4`.
+lines from 5.compact   // Remaining contents of the target metadata file, i.e. 5.compact from the new metadata directory.
+```
+
+In every run mode, the tool offers following universal features:
+- Creates backup of each file before processing
+- Backup is deleted after a successful run(can be overridden to keep the backup)
+- Currently supported file systems:
+    - S3
+    - Unix
+    - HDFS
 ## Usage
 ### Obtaining
 The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool_2.13-x.y.z-assembly.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
@@ -43,7 +67,7 @@ sbt clean assembly
 ### Running
 Run the application by executing the JAR with desired arguments, e.g.
 ```
-java -jar spark-metadata-tool_2.13-x.y.z-assembly.jar --path "s3://bucket/foo/baz
+java -jar spark-metadata-tool_2.13-x.y.z-assembly.jar fix-paths --path "s3://bucket/foo/baz
 ```
 
 The target filesystem is derived automatically from the provided path:
@@ -53,14 +77,25 @@ The target filesystem is derived automatically from the provided path:
 
 ### Complete list of allowed arguments:
 ```
-Usage: spark-metadata-tool [options]
+Usage: spark-metadata-tool [fix-paths|merge] [options]
 
-  -p, --path <value>  full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)
-  -k, --keep-backup   persist backup files after successful run
-  -v, --verbose       increase verbosity of application logging
-  --log-to-file       enable logging to a file
-  --dry-run           enable dry run mode
-  --help              print this usage text
+Command: fix-paths [options]
+Fix paths in Spark metadata files to match current location
+  -p, --path <value>       full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)
+
+
+Command: merge [options]
+Merge Spark metadata files from 2 directories
+  -o, --old <value>        full path to the old data folder, including filesystem (e.g. s3://bucket/foo/old)
+  -n, --new <value>        full path to the new data folder, including filesystem (e.g. s3://bucket/foo/new)
+
+
+Other options:
+  -k, --keep-backup        persist backup files after successful run
+  -v, --verbose            increase verbosity of application logging
+  --log-to-file            enable logging to a file
+  --dry-run                enable dry run mode
+  --help                   print this usage text
 ```
 
 ### S3 Credentials
