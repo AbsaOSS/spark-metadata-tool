@@ -22,7 +22,7 @@ import org.apache.hadoop.fs.Path
 import scala.util.Try
 
 case class MetadataFile(
-  numericName: Int,
+  numericName: Long,
   compact: Boolean,
   path: Path
 ) {
@@ -34,7 +34,7 @@ object MetadataFile {
     val splitName = path.getName.split('.')
     for {
       parsedName <-
-        Try(splitName.headOption.map(_.toInt)).toEither.leftMap(err =>
+        Try(splitName.headOption.map(_.toLong)).toEither.leftMap(err =>
           ParsingError(
             s"Couldn't parse name `${splitName.headOption}` of the file ${path.getName}, expected numeric value",
             err.some
