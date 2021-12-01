@@ -392,6 +392,32 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res.value should contain theSameElementsInOrderAs expected
   }
 
+  "filterMetadataFiles" should "return only files with correct names" in {
+    val metadataFiles = Seq (
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/2.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/4"),
+      new Path("hdfs://path/to/root/_spark_metadata/5"),
+      new Path("hdfs://path/to/root/_spark_metadata/6.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/7"),
+      new Path("hdfs://path/to/root/_spark_metadata/8"),
+    )
+
+    val nonMetadataFiles = Seq(
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.incorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/.onlyIncorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber.incorrectSuffix")
+    )
+
+    val inputFiles = metadataFiles.concat(nonMetadataFiles)
+
+    val res = metadataTool.filterMetadataFiles(inputFiles)
+
+    res.value should contain theSameElementsAs metadataFiles
+  }
+
 }
 
 object MetadataToolSpec {
