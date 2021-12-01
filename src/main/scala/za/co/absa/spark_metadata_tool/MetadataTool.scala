@@ -31,7 +31,9 @@ import za.co.absa.spark_metadata_tool.model.JsonLine
 import za.co.absa.spark_metadata_tool.model.MetadataFile
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
+import za.co.absa.spark_metadata_tool.model.IoError
 
+import scala.util.Try
 import scala.util.chaining._
 
 class MetadataTool(io: FileManager) {
@@ -230,5 +232,17 @@ class MetadataTool(io: FileManager) {
           new Path(fixed).asRight
         }
     }
+
+  def filterMetadataFiles(files: Seq[Path]): Either[IoError, Seq[Path]] = {
+    val (metadataFiles, otherFiles) = files.partition { path =>
+      val (prefix, suffix) = path.getName.span(_ != '.')
+      val isPrefixNumber = Try(prefix.toLong).map(_ => true).getOrElse(false)
+      val isCompactOrEmpty = suffix.isEmpty || suffix == ".compact"
+      isPrefixNumber && isCompactOrEmpty
+    }
+
+    logger.info(s"Ignored non metadata files: ${otherFiles.map(_.toString)}")
+    metadataFiles.asRight[IoError]
+  }
 
 }
