@@ -115,6 +115,7 @@ object Application extends App {
   ): Either[AppError, Unit] = (for {
     _      <- logger.info(s"Processing file $path").asRight
     parsed <- metaTool.loadFile(path)
+    _      <- metaTool.verifyMetadataFileContent(path.toString, parsed)
     _      <- metaTool.backupFile(path, dryRun)
     fixed <-
       metaTool.fixPaths(parsed, newBasePath, firstPartitionKey).tap(_.logDebug(s"Fixed paths in file ${path.toString}"))
