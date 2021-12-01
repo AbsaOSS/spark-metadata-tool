@@ -173,7 +173,8 @@ class MetadataTool(io: FileManager) {
     .tap(_.logValueDebug(s"Last .compact file (if present) and following files"))
 
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
-    metaFiles <- io.listFiles(path)
+    files <- io.listFiles(path)
+    metaFiles <- filterMetadataFiles(files)
     // avoid loading .compact files due to their potential size
     file <- metaFiles
               .find(!_.getName.endsWith("compact"))
