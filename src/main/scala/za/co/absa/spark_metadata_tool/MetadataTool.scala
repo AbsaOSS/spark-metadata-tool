@@ -37,6 +37,7 @@ import scala.util.Try
 import scala.util.chaining._
 
 class MetadataTool(io: FileManager) {
+  private val compactFileSuffix = "compact"
   implicit private val logger: Logger = org.log4s.getLogger
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
@@ -177,7 +178,7 @@ class MetadataTool(io: FileManager) {
     metaFiles <- filterMetadataFiles(files)
     // avoid loading .compact files due to their potential size
     file <- metaFiles
-              .find(!_.getName.endsWith("compact"))
+              .find(!_.getName.endsWith(compactFileSuffix))
               .toRight(NotFoundError(s"Couldn't find standard metadata file to load in $metaFiles"))
     parsed <- loadFile(file)
     extracted <- parsed.collectFirst { case l: JsonLine =>
@@ -238,11 +239,13 @@ class MetadataTool(io: FileManager) {
     val (metadataFiles, otherFiles) = files.partition { path =>
       val (prefix, suffix) = path.getName.span(_ != '.')
       val isPrefixNumber = Try(prefix.toLong).map(_ => true).getOrElse(false)
-      val isCompactOrEmpty = suffix.isEmpty || suffix == ".compact"
+      val isCompactOrEmpty = suffix.isEmpty || suffix == s".$compactFileSuffix"
       isPrefixNumber && isCompactOrEmpty
     }
 
-    logger.info(s"Ignored non metadata files: ${otherFiles.map(_.toString)}")
+    if(otherFiles.nonEmpty)
+      logger.info(s"Ignored non metadata files: ${otherFiles.map(_.toString)}")
+
     metadataFiles.asRight[IoError]
   }
 

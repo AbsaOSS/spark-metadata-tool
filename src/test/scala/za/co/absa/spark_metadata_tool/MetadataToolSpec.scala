@@ -408,7 +408,8 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
       new Path("hdfs://path/to/root/_spark_metadata/notNumber"),
       new Path("hdfs://path/to/root/_spark_metadata/1.incorrectSuffix"),
       new Path("hdfs://path/to/root/_spark_metadata/.onlyIncorrectSuffix"),
-      new Path("hdfs://path/to/root/_spark_metadata/notNumber.incorrectSuffix")
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber.incorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.compact.tmp")
     )
 
     val inputFiles = metadataFiles.concat(nonMetadataFiles)
