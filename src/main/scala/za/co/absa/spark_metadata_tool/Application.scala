@@ -62,12 +62,13 @@ object Application extends App {
     val metaPath = new Path(s"${config.path}/$SparkMetadataDir")
 
     for {
-      filesToFix <- io.listFiles(metaPath).tap(_.logInfo(s"Checked ${metaPath.toString} for Spark metadata files"))
+      allFiles <- io.listFiles(metaPath).tap(_.logInfo(s"Checked ${metaPath.toString} for Spark metadata files"))
+      metadataFilesToFix <- tool.filterMetadataFiles(allFiles)
       key <- tool
                .tap(_ => logger.debug("Trying to determine first partition key"))
                .getFirstPartitionKey(config.path)
       _ <-
-        filesToFix
+        metadataFilesToFix
           .traverse(path => fixFile(path, tool, config.path, config.dryRun, key))
           .tap(_.logInfo("Fixed all files"))
     } yield ()
@@ -77,21 +78,23 @@ object Application extends App {
     val newMeta = new Path(s"${config.path}/$SparkMetadataDir")
 
     for {
-      newFiles <-
+      allNewFiles <-
         io.listFiles(newMeta)
           .tap(_.logInfo(s"Checked the new metadata directory '${newMeta.toString}' for Spark metadata files"))
-      filteredNewFiles <- tool.filterLastCompact(newFiles)
+      newMetadataFiles <- tool.filterMetadataFiles(allNewFiles)
+      filteredNewFiles <- tool.filterLastCompact(newMetadataFiles)
       targetFile <- filteredNewFiles.headOption
                       .toRight(NotFoundError(s"No files in target metadata folder"))
                       .tap(_.logValueInfo(s"Found target file to write merge changes"))
       oldPath <-
         config.oldPath.toRight(UnknownError(s"Path to the old data directory was not set for run mode ${config.mode}"))
       oldMeta = new Path(s"$oldPath/$SparkMetadataDir")
-      oldFiles <-
+      allOldFiles <-
         io.listFiles(oldMeta)
           .tap(_.logInfo(s"Checked the old metadata directory '${oldMeta.toString}' for Spark metadata files"))
+      oldMetadataFiles <- tool.filterMetadataFiles(allOldFiles)
       toMerge <-
-        tool.filterLastCompact(oldFiles).tap(_.logValueInfo(s"Old files to be merged into the new metadata folder"))
+        tool.filterLastCompact(oldMetadataFiles).tap(_.logValueInfo(s"Old files to be merged into the new metadata folder"))
       _      <- tool.backupFile(targetFile.path, config.dryRun)
       merged <- tool.merge(toMerge, targetFile)
       _      <- tool.saveFile(targetFile.path, merged, config.dryRun)
@@ -112,6 +115,7 @@ object Application extends App {
   ): Either[AppError, Unit] = (for {
     _      <- logger.info(s"Processing file $path").asRight
     parsed <- metaTool.loadFile(path)
+    _      <- metaTool.verifyMetadataFileContent(path.toString, parsed)
     _      <- metaTool.backupFile(path, dryRun)
     fixed <-
       metaTool.fixPaths(parsed, newBasePath, firstPartitionKey).tap(_.logDebug(s"Fixed paths in file ${path.toString}"))

@@ -31,6 +31,7 @@ import za.co.absa.spark_metadata_tool.model.JsonLine
 import za.co.absa.spark_metadata_tool.model.MetadataFile
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
+import za.co.absa.spark_metadata_tool.model.ParsingError
 
 import MetadataToolSpec._
 
@@ -392,6 +393,105 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res.value should contain theSameElementsInOrderAs expected
   }
 
+  "filterMetadataFiles" should "return only files with correct names" in {
+    val metadataFiles = Seq (
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/2.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/4"),
+      new Path("hdfs://path/to/root/_spark_metadata/5"),
+      new Path("hdfs://path/to/root/_spark_metadata/6.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/7"),
+      new Path("hdfs://path/to/root/_spark_metadata/8"),
+    )
+
+    val nonMetadataFiles = Seq(
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.incorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/.onlyIncorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber.incorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.compact.tmp")
+    )
+
+    val inputFiles = metadataFiles.concat(nonMetadataFiles)
+
+    val res = metadataTool.filterMetadataFiles(inputFiles)
+
+    res.value should contain theSameElementsAs metadataFiles
+  }
+
+  "verifyMetadataFileContent" should "do nothing if file content is correct" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(
+      MetadataToolSpec.versionLine,
+      MetadataToolSpec.correctJsonLine,
+      MetadataToolSpec.correctJsonLine
+    )
+
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.value shouldBe (): Unit
+  }
+
+  it should "fail if first line is json and not a version" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(MetadataToolSpec.correctJsonLine, MetadataToolSpec.correctJsonLine)
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if first line is string and not a version" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(MetadataToolSpec.notJsonLine, MetadataToolSpec.correctJsonLine)
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if json line is not a json" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(
+      MetadataToolSpec.versionLine,
+      MetadataToolSpec.correctJsonLine,
+      MetadataToolSpec.notJsonLine
+    )
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if json line does not contain path key" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(MetadataToolSpec.versionLine, MetadataToolSpec.incorrectJsonLine)
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if file is empty" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq()
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
 }
 
 object MetadataToolSpec {
@@ -456,5 +556,17 @@ object MetadataToolSpec {
 
     files ++ compactFiles
   }
+
+  val versionLine: StringLine =
+    StringLine("v1")
+  val correctJsonLine: JsonLine =
+    JsonLine(parse("""{"path":"/some/path","key1":12345,"key2":true,"key3":"value3"}""").toOption.get)
+  val incorrectJsonLine: JsonLine =
+    JsonLine(parse("""{"key1":12345,"key2":true,"key3":"value3"}""").toOption.get)
+  val notJsonLine: StringLine =
+    StringLine("not, a, json")
+
+  def getParsingError(path: String): ParsingError =
+    ParsingError(s"File $path did not match expected format", None)
 
 }
