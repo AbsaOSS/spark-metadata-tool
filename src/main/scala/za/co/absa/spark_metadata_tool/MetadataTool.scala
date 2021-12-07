@@ -32,6 +32,7 @@ import za.co.absa.spark_metadata_tool.model.MetadataFile
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
 import za.co.absa.spark_metadata_tool.model.IoError
+import za.co.absa.spark_metadata_tool.model.ParsingError
 
 import scala.util.Try
 import scala.util.chaining._
@@ -151,6 +152,7 @@ class MetadataTool(io: FileManager) {
 
   def merge(oldFiles: Seq[MetadataFile], targetFile: MetadataFile): Either[AppError, Seq[FileLine]] = for {
     targetFileContent <- loadFile(targetFile.path)
+    _ <- verifyMetadataFileContent(targetFile.path.toString, targetFileContent)
     version <- targetFileContent.headOption
                  .tap(v => logger.debug(s"Version value from the target file $targetFile: $v"))
                  .toRight(NotFoundError(s"No content in file ${targetFile.path}"))
@@ -159,6 +161,8 @@ class MetadataTool(io: FileManager) {
                   .tap(c => logger.debug(s"Will append ${c.size} lines from the target file $targetFile"))
                   .asRight
     oldFilesContent <- oldFiles.sorted.traverse(f => loadFile(f.path))
+    _ <- oldFiles.zip(oldFilesContent)
+           .traverse { case (file, content) => verifyMetadataFileContent(file.path.toString, content)}
     toPrepend <- oldFilesContent
                    .flatMap(_.drop(1))
                    .tap(c => logger.debug(s"Will merge ${c.size} lines from the old metadata files"))
@@ -247,6 +251,18 @@ class MetadataTool(io: FileManager) {
       logger.info(s"Ignored non metadata files: ${otherFiles.map(_.toString)}")
 
     metadataFiles.asRight[IoError]
+  }
+
+  def verifyMetadataFileContent(path: String, lines: Seq[FileLine]): Either[AppError, Unit] = {
+    def verifyJsonContent(lines: Seq[FileLine]): Boolean = lines.forall {
+      case line: JsonLine => line.cursor.keys.exists(_.toSeq.contains("path"))
+      case _ => false
+    }
+    lines match {
+      case (firstLine:StringLine)::(rest:Seq[FileLine])
+        if firstLine.value == "v1" && rest.nonEmpty && verifyJsonContent(rest) => Right((): Unit)
+      case _ => Left(ParsingError(s"File $path did not match expected format", None))
+    }
   }
 
 }
