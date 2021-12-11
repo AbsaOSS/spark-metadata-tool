@@ -18,7 +18,7 @@ import sbt._
 object Dependencies {
 
   val circeVersion = "0.14.1"
-  val log4jVersion = "2.14.1"
+  val log4jVersion = "2.15.0"
   val hadoopVersion = "2.10.1"
 
   lazy val aws          = "software.amazon.awssdk"   % "s3"            % "2.17.55"
