@@ -28,8 +28,10 @@ import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.FileLine
 import za.co.absa.spark_metadata_tool.model.IoError
 import za.co.absa.spark_metadata_tool.model.JsonLine
+import za.co.absa.spark_metadata_tool.model.MetadataFile
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
+import za.co.absa.spark_metadata_tool.model.ParsingError
 
 import MetadataToolSpec._
 
@@ -313,6 +315,183 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     deleteDirCall.once()
   }
 
+  "merge" should "merge multiple metadata files with correct order" in {
+    val targetFile = MetadataFile(9, compact = true, new Path("hdfs://path/new/_spark_metadata/9.compact"))
+    val targetLines = Seq(
+      StringLine("v1"),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/target/test.parquet"))).value)
+    )
+    val oldFile1 = MetadataFile(1, compact = false, new Path("hdfs://path/old/_spark_metadata/1"))
+    val oldFile2 = MetadataFile(2, compact = false, new Path("hdfs://path/old/_spark_metadata/2"))
+    val oldLines1 = Seq(
+      StringLine("v1"),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old1/test.parquet"))).value)
+    )
+    val oldLines2 = Seq(
+      StringLine("v1"),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old2/test.parquet"))).value)
+    )
+
+    val expected = Seq(
+      StringLine("v1"),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old1/test.parquet"))).value),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/old2/test.parquet"))).value),
+      JsonLine(parse(validLine(new Path("hdfs://path/from/target/test.parquet"))).value)
+    )
+
+    (fileManager.readAllLines _).expects(targetFile.path).returning(targetLines.map(_.toString).asRight).once()
+
+    (fileManager.readAllLines _).expects(oldFile1.path).returning(oldLines1.map(_.toString).asRight).once()
+
+    (fileManager.readAllLines _).expects(oldFile2.path).returning(oldLines2.map(_.toString).asRight).once()
+
+    val res = metadataTool.merge(Seq(oldFile2, oldFile1), targetFile)
+
+    res.value should contain theSameElementsInOrderAs expected
+  }
+
+  "filterLastCompact" should "return all metadata files in correct order if no .compact file was present" in {
+    val paths = Seq(
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/3"),
+      new Path("hdfs://path/to/root/_spark_metadata/2"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/4")
+    )
+
+    val expected = Seq(
+      MetadataFile(0, compact = false, new Path("hdfs://path/to/root/_spark_metadata/0")),
+      MetadataFile(1, compact = false, new Path("hdfs://path/to/root/_spark_metadata/1")),
+      MetadataFile(2, compact = false, new Path("hdfs://path/to/root/_spark_metadata/2")),
+      MetadataFile(3, compact = false, new Path("hdfs://path/to/root/_spark_metadata/3")),
+      MetadataFile(4, compact = false, new Path("hdfs://path/to/root/_spark_metadata/4"))
+    )
+
+    val res = metadataTool.filterLastCompact(paths)
+
+    res.value should contain theSameElementsInOrderAs expected
+  }
+
+  it should "return latest .compact file and all following metadata files in correct order" in {
+    val paths = Seq(
+      new Path("hdfs://path/to/root/_spark_metadata/3.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/3"),
+      new Path("hdfs://path/to/root/_spark_metadata/2"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/4")
+    )
+
+    val expected = Seq(
+      MetadataFile(3, compact = true, new Path("hdfs://path/to/root/_spark_metadata/3.compact")),
+      MetadataFile(4, compact = false, new Path("hdfs://path/to/root/_spark_metadata/4"))
+    )
+
+    val res = metadataTool.filterLastCompact(paths)
+
+    res.value should contain theSameElementsInOrderAs expected
+  }
+
+  "filterMetadataFiles" should "return only files with correct names" in {
+    val metadataFiles = Seq (
+      new Path("hdfs://path/to/root/_spark_metadata/0"),
+      new Path("hdfs://path/to/root/_spark_metadata/1"),
+      new Path("hdfs://path/to/root/_spark_metadata/2.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/4"),
+      new Path("hdfs://path/to/root/_spark_metadata/5"),
+      new Path("hdfs://path/to/root/_spark_metadata/6.compact"),
+      new Path("hdfs://path/to/root/_spark_metadata/7"),
+      new Path("hdfs://path/to/root/_spark_metadata/8"),
+    )
+
+    val nonMetadataFiles = Seq(
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.incorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/.onlyIncorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/notNumber.incorrectSuffix"),
+      new Path("hdfs://path/to/root/_spark_metadata/1.compact.tmp")
+    )
+
+    val inputFiles = metadataFiles.concat(nonMetadataFiles)
+
+    val res = metadataTool.filterMetadataFiles(inputFiles)
+
+    res.value should contain theSameElementsAs metadataFiles
+  }
+
+  "verifyMetadataFileContent" should "do nothing if file content is correct" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(
+      MetadataToolSpec.versionLine,
+      MetadataToolSpec.correctJsonLine,
+      MetadataToolSpec.correctJsonLine
+    )
+
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.value shouldBe (): Unit
+  }
+
+  it should "fail if first line is json and not a version" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(MetadataToolSpec.correctJsonLine, MetadataToolSpec.correctJsonLine)
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if first line is string and not a version" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(MetadataToolSpec.notJsonLine, MetadataToolSpec.correctJsonLine)
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if json line is not a json" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(
+      MetadataToolSpec.versionLine,
+      MetadataToolSpec.correctJsonLine,
+      MetadataToolSpec.notJsonLine
+    )
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if json line does not contain path key" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq(MetadataToolSpec.versionLine, MetadataToolSpec.incorrectJsonLine)
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if file is empty" in {
+    val path = hdfsBasePath.toString
+
+    val lines: Seq[FileLine] = Seq()
+
+    val expected = MetadataToolSpec.getParsingError(path)
+    val res = metadataTool.verifyMetadataFileContent(path, lines)
+
+    res.left.value shouldBe expected
+  }
 }
 
 object MetadataToolSpec {
@@ -377,5 +556,17 @@ object MetadataToolSpec {
 
     files ++ compactFiles
   }
+
+  val versionLine: StringLine =
+    StringLine("v1")
+  val correctJsonLine: JsonLine =
+    JsonLine(parse("""{"path":"/some/path","key1":12345,"key2":true,"key3":"value3"}""").toOption.get)
+  val incorrectJsonLine: JsonLine =
+    JsonLine(parse("""{"key1":12345,"key2":true,"key3":"value3"}""").toOption.get)
+  val notJsonLine: StringLine =
+    StringLine("not, a, json")
+
+  def getParsingError(path: String): ParsingError =
+    ParsingError(s"File $path did not match expected format", None)
 
 }

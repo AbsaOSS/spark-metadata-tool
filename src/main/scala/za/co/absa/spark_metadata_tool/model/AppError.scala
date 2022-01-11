@@ -26,8 +26,9 @@ sealed trait AppErrorWithThrowable extends AppError {
 
 case class InitializationError(msg: String, ex: Option[Throwable]) extends AppErrorWithThrowable
 case class IoError(msg: String, ex: Option[Throwable])             extends AppErrorWithThrowable
-case class ArgumentParserError(msg: String)                        extends AppError
+case class ParsingError(msg: String, ex: Option[Throwable])        extends AppErrorWithThrowable
 case class NotFoundError(msg: String)                              extends AppError
 case class UnknownFileSystemError(msg: String)                     extends AppError
 case class UnknownError(msg: String)                               extends AppError
 case class NotImplementedError(msg: String)                        extends AppError
+case class JsonError(msg: String)                                  extends AppError
