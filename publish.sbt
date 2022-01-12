@@ -26,10 +26,16 @@ ThisBuild / scmInfo := Some(
 
 ThisBuild / developers := List(
   Developer(
-    id    = "DoktorZhor",
-    name  = "Tomas Dlabka",
-    email = "tomas.dlabka@absa.africa",
-    url   = url("https://github.com/DoktorZhor")
+    id    = "jozefbakus",
+    name  = "Jozef Bakus",
+    email = "jozef.bakus@absa.africa",
+    url   = url("https://github.com/jozefbakus")
+  ),
+  Developer(
+    id    = "kevinwallimann",
+    name  = "Kevin Wallimann",
+    email = "kevin.wallimann@absa.africa",
+    url   = url("https://github.com/kevinwallimann")
   )
 )
 
