@@ -33,6 +33,7 @@ import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
 import za.co.absa.spark_metadata_tool.model.IoError
 import za.co.absa.spark_metadata_tool.model.ParsingError
+import za.co.absa.spark_metadata_tool.model.MetadataRecord
 
 import scala.util.Try
 import scala.util.chaining._
@@ -127,6 +128,54 @@ class MetadataTool(io: FileManager) {
              }
              .asRight
   } yield key
+
+  /** List all files in directory recursively.
+   *
+   * @param rootDirPath
+   *   path to root directory
+   * @return
+   *   all files in directory and all subdirectories recursively
+   */
+  def listFilesRecursively(rootDirPath: Path): Either[AppError, Seq[Path]] = {
+    for {
+      dirs <- io.listDirectories(rootDirPath)
+      files <- io.listFiles(rootDirPath)
+      filesInSubDir <- dirs.flatTraverse(dir =>  listFilesRecursively(dir))
+    } yield {
+      files ++ filesInSubDir
+    }
+  }
+
+  /** Get metadata records from a metadata file.
+   *
+   * @param metadataFilePath
+   *   path to metadata file
+   * @return
+   *   metadata records from metadata file
+   */
+  def getMetaRecords(metadataFilePath: Path): Either[AppError, Seq[MetadataRecord]] = {
+    for {
+      loadedFile <- loadFile(metadataFilePath)
+      _ <- verifyMetadataFileContent(metadataFilePath.toString, loadedFile)
+      metaRecords <- loadedFile.traverse {
+        case l: JsonLine =>
+          val path = l.cursor
+            .get[Path]("path")
+            .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.toString}"))
+
+          val action = l.cursor
+            .get[String]("action")
+            .leftMap(_ => NotFoundError(s"Couldn't find action in JSON line ${l.toString}"))
+          for {
+            p <- path
+            a <- action
+          } yield Some(MetadataRecord(p, a))
+        case _ => Right(None)
+      }
+    } yield {
+      metaRecords.flatten
+    }
+  }
 
   def backupFile(path: Path, dryRun: Boolean): Either[AppError, Unit] = (
     if (dryRun) {

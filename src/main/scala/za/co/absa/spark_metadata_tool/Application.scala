@@ -36,6 +36,7 @@ import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownError
+import za.co.absa.spark_metadata_tool.model.CompareMetadataWithData
 
 import scala.util.Try
 import scala.util.chaining._
@@ -51,11 +52,15 @@ object Application extends App {
   def run(args: Array[String]): Either[AppError, Unit] = for {
     (conf, io, tool) <- init(args).tap(_.logInfo("Initialized application"))
     _ <- conf.mode match {
-           case FixPaths => fixPaths(conf, io, tool)
-           case Merge    => mergeMetadataFiles(conf, io, tool)
+           case FixPaths                => fixPaths(conf, io, tool)
+           case Merge                   => mergeMetadataFiles(conf, io, tool)
+           case CompareMetadataWithData => compareMetadataWithData(conf, io, tool)
          }
     backupPath = new Path(s"${conf.path}/$BackupDir")
-    _         <- if (conf.keepBackup) ().asRight else tool.deleteBackup(backupPath, conf.dryRun)
+    _ <- conf.mode match {
+      case FixPaths | Merge if !conf.keepBackup => tool.deleteBackup(backupPath, conf.dryRun)
+      case _ =>  ().asRight
+    }
   } yield ()
 
   private def fixPaths(config: AppConfig, io: FileManager, tool: MetadataTool): Either[AppError, Unit] = {
@@ -99,6 +104,48 @@ object Application extends App {
       merged <- tool.merge(toMerge, targetFile)
       _      <- tool.saveFile(targetFile.path, merged, config.dryRun)
     } yield ()
+  }
+
+  private def compareMetadataWithData(
+    config: AppConfig,
+    io: FileManager,
+    tool: MetadataTool
+  ): Either[AppError, Unit] = {
+    val dataPath =  config.path
+    val metaPath = new Path(s"$dataPath/$SparkMetadataDir")
+
+    for {
+      metaPaths       <- io.listFiles(metaPath)
+      usedMetaFiles   <- tool.filterLastCompact(metaPaths)
+      metaRecords     <- usedMetaFiles.flatTraverse(metaFile => tool.getMetaRecords(metaFile.path))
+      filesInInputDir <- tool.listFilesRecursively(dataPath)
+      dataFiles       <- filesInInputDir.filter(_.toString.endsWith(".parquet")).asRight
+    } yield {
+      val ADD = "add"
+      val DELETE = "delete"
+      val metaRecordsByAction = metaRecords.groupMap(_.action)(_.path)
+
+      val deleteRecords = metaRecordsByAction.getOrElse(DELETE, Seq.empty)
+      val addRecords = metaRecordsByAction.getOrElse(ADD, Seq.empty).filter(record => !deleteRecords.contains(record))
+      val otherRecords = metaRecordsByAction.filter(record => record._1 != ADD && record._1 != DELETE).values.flatten
+
+      val notDeletedData = deleteRecords.filter(dataFiles.contains)
+      val missingData = addRecords.diff(dataFiles)
+      val unknownData = dataFiles.diff(addRecords)
+      val isDataIssueDetected =
+        notDeletedData.isEmpty && missingData.isEmpty && unknownData.isEmpty
+
+      if(isDataIssueDetected) {
+        logger.info("No issue detected in data and metadata")
+      } else {
+        logger.error("Data issue detected")
+      }
+
+      if(notDeletedData.nonEmpty) logger.error(s"The data that should have been deleted: $notDeletedData")
+      if(missingData.nonEmpty) logger.error(s"Missing data: $missingData")
+      if(unknownData.nonEmpty) logger.error(s"Unknown data: $unknownData")
+      if(otherRecords.nonEmpty) logger.error(s"Unknown records in metadata: $otherRecords")
+    }
   }
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
