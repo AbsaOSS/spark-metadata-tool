@@ -121,30 +121,54 @@ object Application extends App {
       filesInInputDir <- tool.listFilesRecursively(dataPath)
       dataFiles       <- filesInInputDir.filter(_.toString.endsWith(".parquet")).asRight
     } yield {
-      val ADD = "add"
-      val DELETE = "delete"
+      val add = "add"
+      val delete = "delete"
       val metaRecordsByAction = metaRecords.groupMap(_.action)(_.path)
 
-      val deleteRecords = metaRecordsByAction.getOrElse(DELETE, Seq.empty)
-      val addRecords = metaRecordsByAction.getOrElse(ADD, Seq.empty).filter(record => !deleteRecords.contains(record))
-      val otherRecords = metaRecordsByAction.filter(record => record._1 != ADD && record._1 != DELETE).values.flatten
+      val deleteRecords = metaRecordsByAction.getOrElse(delete, Seq.empty)
+      val addRecords = metaRecordsByAction.getOrElse(add, Seq.empty).filter(record => !deleteRecords.contains(record))
+      val otherRecords = metaRecordsByAction.filter(record => record._1 != add && record._1 != delete).values.flatten
 
       val notDeletedData = deleteRecords.filter(dataFiles.contains)
       val missingData = addRecords.diff(dataFiles)
       val unknownData = dataFiles.diff(addRecords)
-      val isDataIssueDetected =
+      val noDataIssueDetected =
         notDeletedData.isEmpty && missingData.isEmpty && unknownData.isEmpty
 
-      if(isDataIssueDetected) {
+      if(noDataIssueDetected) {
         logger.info("No issue detected in data and metadata")
       } else {
         logger.error("Data issue detected")
       }
+      printDetectedDataIssues(notDeletedData, missingData, unknownData, otherRecords)
+    }
+  }
 
-      if(notDeletedData.nonEmpty) logger.error(s"The data that should have been deleted: $notDeletedData")
-      if(missingData.nonEmpty) logger.error(s"Missing data: $missingData")
-      if(unknownData.nonEmpty) logger.error(s"Unknown data: $unknownData")
-      if(otherRecords.nonEmpty) logger.error(s"Unknown records in metadata: $otherRecords")
+  private def printDetectedDataIssues(
+    notDeletedData: Iterable[Path],
+    missingData: Iterable[Path],
+    unknownData: Iterable[Path],
+    otherRecords: Iterable[Path]
+  ): Unit = {
+    if(notDeletedData.nonEmpty) {
+      logger.error(s"Data that should have been deleted. START")
+      notDeletedData.foreach(r => logger.error(r.toString))
+      logger.error(s"Data that should have been deleted. END.")
+    }
+    if(missingData.nonEmpty) {
+      logger.error(s"Missing data. START")
+      missingData.foreach(r => logger.error(r.toString))
+      logger.error(s"Missing data. END")
+    }
+    if(unknownData.nonEmpty) {
+      logger.error(s"Unknown data. START")
+      unknownData.foreach(r => logger.error(r.toString))
+      logger.error(s"Unknown data. END")
+    }
+    if(otherRecords.nonEmpty) {
+      logger.error(s"Unknown records in metadata. START")
+      otherRecords.foreach(r => logger.error(r.toString))
+      logger.error(s"Unknown records in metadata. END")
     }
   }
 

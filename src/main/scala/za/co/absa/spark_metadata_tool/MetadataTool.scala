@@ -138,9 +138,9 @@ class MetadataTool(io: FileManager) {
    */
   def listFilesRecursively(rootDirPath: Path): Either[AppError, Seq[Path]] = {
     for {
-      dirs <- io.listDirectories(rootDirPath)
-      files <- io.listFiles(rootDirPath)
-      filesInSubDir <- dirs.flatTraverse(dir =>  listFilesRecursively(dir))
+      dirs          <- io.listDirectories(rootDirPath)
+      files         <- io.listFiles(rootDirPath)
+      filesInSubDir <- dirs.flatTraverse(dir => listFilesRecursively(dir))
     } yield {
       files ++ filesInSubDir
     }
