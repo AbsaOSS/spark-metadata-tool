@@ -6,7 +6,7 @@ Spark Structured Streaming references data files using absolute paths, which mak
 The tool solves this issue by fixing all paths in Spark metadata files to point to the current location of the data.
 
 ## Features
-The tool currently provides 2 run modes - `fix-paths` and `merge`.
+The tool currently provides 3 run modes - `fix-paths`, `merge` and `compare-metadata-with-data`.
 
 ### fix-paths
 - Fixes all paths in metadata files to point to the current location of the data
@@ -54,6 +54,12 @@ In every run mode, the tool offers following universal features:
     - S3
     - Unix
     - HDFS
+
+### compare-metadata-with-data
+- Compares metadata records with data and log all inconsistencies
+
+Note that the tool does not perform any operation to file system
+
 ## Usage
 ### Obtaining
 The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool_2.13-x.y.z-assembly.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
@@ -88,6 +94,10 @@ Command: merge [options]
 Merge Spark metadata files from 2 directories
   -o, --old <value>        full path to the old data folder, including filesystem (e.g. s3://bucket/foo/old)
   -n, --new <value>        full path to the new data folder, including filesystem (e.g. s3://bucket/foo/new)
+
+Command: compare-metadata-with-data [options]
+Compares metadata records with data and log all inconsistencies
+  -p, --path <value>       full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)
 
 
 Other options:

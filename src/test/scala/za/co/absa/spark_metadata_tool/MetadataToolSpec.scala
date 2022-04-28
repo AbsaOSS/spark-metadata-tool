@@ -32,6 +32,7 @@ import za.co.absa.spark_metadata_tool.model.MetadataFile
 import za.co.absa.spark_metadata_tool.model.NotFoundError
 import za.co.absa.spark_metadata_tool.model.StringLine
 import za.co.absa.spark_metadata_tool.model.ParsingError
+import za.co.absa.spark_metadata_tool.model.MetadataRecord
 
 import MetadataToolSpec._
 
@@ -243,6 +244,84 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
       .returning(testFile.map(_.toString).asRight)
 
     val res = metadataTool.getFirstPartitionKey(path)
+
+    res.left.value shouldBe expected
+  }
+
+  "listFilesRecursively" should "return all files recursively" in {
+    val root = unixBasePath
+    val filesInRoot = Seq(new Path(s"$unixBasePath/a.file"), new Path(s"$unixBasePath/b.file"))
+    val subDir = new Path(s"$unixBasePath/subDir")
+    val filesInSubDir = Seq(new Path(s"$subDir/c.file"), new Path(s"$subDir/d.file"))
+    val subSubOneDir = new Path(s"$subDir/subSubOneDir")
+    val filesInSubSubOneDir = Seq(new Path(s"$subSubOneDir/e.file"), new Path(s"$subSubOneDir/f.file"))
+    val subSubTwoDir = new Path(s"$subDir/subSubTwoDir")
+    val filesInSubSubTwoDir = Seq(new Path(s"$subSubTwoDir/g.file"), new Path(s"$subSubTwoDir/h.file"))
+    val expected: Seq[Path] = filesInRoot ++ filesInSubDir ++ filesInSubSubOneDir ++ filesInSubSubTwoDir
+
+    (fileManager.listDirectories _).expects(root).returning(Seq(subDir).asRight)
+    (fileManager.listDirectories _).expects(subDir).returning(Seq(subSubOneDir, subSubTwoDir).asRight)
+    (fileManager.listDirectories _).expects(subSubOneDir).returning(Seq.empty.asRight)
+    (fileManager.listDirectories _).expects(subSubTwoDir).returning(Seq.empty.asRight)
+
+    (fileManager.listFiles _).expects(root).returning(filesInRoot.asRight)
+    (fileManager.listFiles _).expects(subDir).returning(filesInSubDir.asRight)
+    (fileManager.listFiles _).expects(subSubOneDir).returning(filesInSubSubOneDir.asRight)
+    (fileManager.listFiles _).expects(subSubTwoDir).returning(filesInSubSubTwoDir.asRight)
+
+    val res = metadataTool.listFilesRecursively(root)
+    res.value should contain theSameElementsAs expected
+  }
+
+  it should "return empty sequence when input folder is empty" in {
+    val path = unixBasePath
+
+    (fileManager.listDirectories _).expects(path).returning(Seq.empty.asRight)
+    (fileManager.listFiles _).expects(path).returning(Seq.empty.asRight)
+
+    val res = metadataTool.listFilesRecursively(path)
+
+    res.value.isEmpty shouldBe true
+  }
+
+  "getMetaRecords" should "return all metadata records from metadata" in {
+    val path = unixBasePath
+    val versionLineString = versionLine.value
+    val metadataRecordA = MetadataRecord(new Path(s"$unixBasePath/a.file"), "add")
+    val metadataRecordB = MetadataRecord(new Path(s"$unixBasePath/B.file"), "add")
+
+    val fileA = validLineWithAction(metadataRecordA.path, metadataRecordA.action)
+    val fileB = validLineWithAction(metadataRecordB.path, metadataRecordB.action)
+
+    val expected = Seq(metadataRecordA, metadataRecordB)
+
+    (fileManager.readAllLines _).expects(path).returning(Seq(versionLineString, fileA, fileB).asRight)
+
+    val res = metadataTool.getMetaRecords(path)
+
+    res.value should contain theSameElementsAs expected
+  }
+
+  it should "fail if file is not metadata file" in {
+    val path = unixBasePath
+
+    (fileManager.readAllLines _).expects(path).returning(stringLines.map(_.toString).asRight)
+
+    val expected = MetadataToolSpec.getParsingError(path.toString)
+    val res = metadataTool.getMetaRecords(path)
+
+    res.left.value shouldBe expected
+  }
+
+  it should "fail if any JSON line doesn't contain 'action' key" in {
+    val path = unixBasePath
+    val versionLineString = versionLine.value
+    val corruptedLine = validLine(path)
+
+    (fileManager.readAllLines _).expects(path).returning(Seq(versionLineString, corruptedLine).asRight)
+
+    val expected = NotFoundError(s"Couldn't find action in JSON line $corruptedLine")
+    val res = metadataTool.getMetaRecords(path)
 
     res.left.value shouldBe expected
   }
@@ -499,9 +578,11 @@ object MetadataToolSpec {
   val firstPartKey: String   = "key1"
   val hdfsBaseString: String = "hdfs://path/to/root/dir"
   val s3BaseString: String   = "s3://some/base/path"
+  val unixBaseString: String = "/some/base/path"
   val hdfsBasePath: Path     = createPath(hdfsBaseString, None, None)
   val s3BasePath: Path       = createPath(s3BaseString, None, None)
   val s3TestPath: Path       = createPath(s3BaseString, createPartitions("key1", "value1").some, "file.parquet".some)
+  val unixBasePath: Path     = createPath(unixBaseString, None, None)
 
   def createPartitions(key1Name: String, key1Value: String): String = s"$key1Name=$key1Value/key2=value2"
   def createPath(basePath: String, partitions: Option[String], fileName: Option[String]): Path = new Path(
@@ -510,6 +591,8 @@ object MetadataToolSpec {
 
   val lineNoPath                    = """{"key":"value","key2":12345,"key3":false}"""
   def validLine(path: Path): String = s"""{"path":"$path","key":12345,"key2":true,"key3":"value3"}"""
+  def validLineWithAction(path: Path, action: String): String =
+    s"""{"path":"$path","action":"$action","key2":true,"key3":"value3"}"""
 
   val stringLines: Seq[FileLine] = Seq(
     StringLine("I am a regular String"),

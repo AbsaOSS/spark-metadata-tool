@@ -27,6 +27,7 @@ import scopt.OParser
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.AppConfig
 import za.co.absa.spark_metadata_tool.model.AppError
+import za.co.absa.spark_metadata_tool.model.CompareMetadataWithData
 import za.co.absa.spark_metadata_tool.model.FixPaths
 import za.co.absa.spark_metadata_tool.model.Hdfs
 import za.co.absa.spark_metadata_tool.model.InitializationError
@@ -79,6 +80,16 @@ object ArgumentParser {
             .required()
             .action((x, c) => c.copy(path = x))
             .text("full path to the new data folder, including filesystem (e.g. s3://bucket/foo/new)")
+        ),
+      note(sys.props("line.separator")),
+      cmd("compare-metadata-with-data")
+        .action((_, c) => c.copy(mode = CompareMetadataWithData))
+        .text("Compare metadata with data files")
+        .children(
+          opt[Path]('p', "path")
+            .required()
+            .action((x, c) => c.copy(path = x))
+            .text("full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)")
         ),
       note(sys.props("line.separator")),
       note("Other options:"),
