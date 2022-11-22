@@ -68,7 +68,10 @@ lazy val root = (project in file("."))
 
 val patSettings = githubTokenSource := TokenSource.Or(
   TokenSource.Environment("GITHUB_TOKEN"), // Required for publishing
-  TokenSource.Environment("SHELL")         // Used to bypass PAT eager resolution for local development
+  TokenSource.Or(
+    TokenSource.Environment("SHELL"),      // Used to bypass PAT eager resolution for local development
+    TokenSource.GitConfig("github.token")  // Used on windows with IntelliJ due to known issue: https://github.com/djspiewak/sbt-github-packages/issues/26
+  )
 )
 
 val compilerOptions = Seq(
