@@ -24,6 +24,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues, OptionValues}
 
+import java.io.File
 import java.nio.file
 import java.nio.file.Paths
 import java.util.UUID
@@ -39,7 +40,9 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
   miniDFSCluster.waitActive()
 
   val testDataFolder = "/hdfsTestData"
-  val testDataRootDir: String = getClass.getResource(testDataFolder).getPath
+  // getting absolute path and replacing actions are required to keep test running on windows too
+  val testDataRootDir: String = new File(getClass.getResource(testDataFolder).toURI).getAbsolutePath.
+    replace("\\", "/")
   val testDataHdfsRootDir: String = s"${miniDFSCluster.getFileSystem.getUri.toString}$testDataFolder"
   val topLevelDirOne: String = "dir1"
   val fileOneInDirOne: String = "testFile1.txt"
