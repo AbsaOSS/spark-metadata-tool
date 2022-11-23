@@ -138,3 +138,12 @@ sbt clean publishSigned
 
 Note that automatic overwriting of packages (including `-SNAPSHOT` versions) is currently not supported by [GitHub Packages](https://docs.github.com/en/packages/learn-github-packages/introduction-to-github-packages)
 and will fail unless the previous package is manually deleted.
+
+## How to generate Code coverage report
+```sbt
+sbt jacoco
+```
+Code coverage will be generated on path:
+```
+{project-root}/target/scala-{scala_version}/jacoco/report/html
+```

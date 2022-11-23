@@ -116,3 +116,15 @@ val compilerOptions = Seq(
   "-Wunused:privates",
   "-Wvalue-discard"
 )
+
+// JaCoCo code coverage
+Test / jacocoReportSettings := JacocoReportSettings(
+  title = s"spark-metadata-tool_${scalaVersion.value} Jacoco Report",
+  formats = Seq(JacocoReportFormats.HTML, JacocoReportFormats.XML)
+)
+
+// exclude example
+Test / jacocoExcludes := Seq(
+//    "za.co.absa.spark_metadata_tool.model.S3*", // class and related objects
+//    "za.co.absa.spark_metadata_tool.model.AppConfig" // class only
+)
