@@ -20,7 +20,7 @@ import cats.implicits._
 import org.apache.hadoop.fs.Path
 import org.log4s.Logger
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
-import za.co.absa.spark_metadata_tool.model.IoError
+import za.co.absa.spark_metadata_tool.model.{IoError, ToolFileStatus}
 
 import java.io.File
 import java.io.FileOutputStream
@@ -68,9 +68,27 @@ case object UnixFileManager extends FileManager {
     Files.copy(from, to)
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
+  override def makeDir(dir: Path): Either[IoError, Unit] =
+    catchAsIoError(Files.createDirectory(Paths.get(withScheme(dir).toUri))).map(_ => ())
+
   def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
     paths.foreach(p => Files.delete(Paths.get(withScheme(p).toUri)))
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
+
+  override def getFileStatus(file: Path): Either[IoError, ToolFileStatus] =
+    for {
+      path             <- catchAsIoError(Paths.get(withScheme(file).toUri))
+      size             <- catchAsIoError(Files.size(path))
+      isDir            <- catchAsIoError(Files.isDirectory(path))
+      modificationTime <- catchAsIoError(Files.getLastModifiedTime(path)).map(_.toMillis)
+    } yield ToolFileStatus(
+      path = withScheme(file),
+      size,
+      isDir,
+      modificationTime,
+      blockReplication = 1,
+      blockSize = -1
+    )
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)

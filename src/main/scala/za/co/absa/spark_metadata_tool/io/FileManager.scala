@@ -17,7 +17,7 @@
 package za.co.absa.spark_metadata_tool.io
 
 import org.apache.hadoop.fs.Path
-import za.co.absa.spark_metadata_tool.model.IoError
+import za.co.absa.spark_metadata_tool.model.{ToolFileStatus, IoError}
 
 trait FileManager {
   def listFiles(path: Path): Either[IoError, Seq[Path]]
@@ -26,4 +26,6 @@ trait FileManager {
   def write(path: Path, lines: Seq[String]): Either[IoError, Unit]
   def copy(from: Path, to: Path): Either[IoError, Unit]
   def delete(paths: Seq[Path]): Either[IoError, Unit]
+  def makeDir(dir: Path): Either[IoError, Unit]
+  def getFileStatus(file: Path): Either[IoError, ToolFileStatus]
 }

@@ -23,21 +23,9 @@ import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.CopyObjectRequest
-import software.amazon.awssdk.services.s3.model.Delete
-import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest
-import software.amazon.awssdk.services.s3.model.GetObjectRequest
-import software.amazon.awssdk.services.s3.model.GetObjectResponse
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
-import software.amazon.awssdk.services.s3.model.ObjectIdentifier
-import software.amazon.awssdk.services.s3.model.PutObjectRequest
-import software.amazon.awssdk.services.s3.model.PutObjectResponse
+import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest, PutObjectResponse}
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
-import za.co.absa.spark_metadata_tool.model.All
-import za.co.absa.spark_metadata_tool.model.Directory
-import za.co.absa.spark_metadata_tool.model.File
-import za.co.absa.spark_metadata_tool.model.FileType
-import za.co.absa.spark_metadata_tool.model.IoError
+import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError, ToolFileStatus}
 
 import java.io.ByteArrayOutputStream
 import scala.io.Source
@@ -101,7 +89,50 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     parsedLines
   }
 
-  override def write(path: Path, lines: Seq[String]): Either[IoError, Unit] = {
+  override def write(path: Path, lines: Seq[String]): Either[IoError, Unit] =
+    for {
+      bytes <- toBytes(lines)
+      _     <- putToDestination(path, RequestBody.fromBytes(bytes))
+    } yield ()
+
+  override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
+    listBucket(path, Directory).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
+
+  override def listFiles(path: Path): Either[IoError, Seq[Path]] =
+    listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
+
+  override def makeDir(dir: Path): Either[IoError, Unit] =
+    listDirectories(dir.getParent).map(_.map(_.getName).contains(dir.getName)).flatMap {
+      case false => putToDestination(dir, RequestBody.empty())
+      case _     => IoError(s"${dir.getName}: File exists", None).asLeft
+    }
+
+  override def getFileStatus(file: Path): Either[IoError, ToolFileStatus] =
+    headObject(file).map(head =>
+      ToolFileStatus(
+        path = file,
+        size = head.contentLength(),
+        isDir = head.contentType() == "application/x-directory",
+        modificationTime = head.lastModified().toEpochMilli,
+        blockReplication = -1,
+        blockSize = -1
+      )
+    )
+
+  private def headObject(file: Path): Either[IoError, HeadObjectResponse] = {
+    val bucket = getBucket(file)
+    val key = getKey(file, bucket)
+
+    val request = HeadObjectRequest
+      .builder()
+      .bucket(bucket)
+      .key(key)
+      .build()
+
+    catchAsIoError(s3.headObject(request))
+  }
+
+  private def putToDestination(path: Path, body: RequestBody): Either[IoError, Unit] = {
     val bucket = getBucket(path)
     val key    = getKey(path, bucket)
 
@@ -111,17 +142,8 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       .key(key)
       .build()
 
-    for {
-      bytes <- toBytes(lines)
-      _     <- put(objectRequest, RequestBody.fromBytes(bytes))
-    } yield ()
+    put(objectRequest, body).map(_ => ())
   }
-
-  override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
-    listBucket(path, Directory).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
-
-  override def listFiles(path: Path): Either[IoError, Seq[Path]] =
-    listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
   private def toBytes(lines: Seq[String]): Either[IoError, Array[Byte]] =
     Using(new ByteArrayOutputStream()) { stream =>
@@ -129,10 +151,9 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       stream.toByteArray
     }.toEither.leftMap(err => IoError(err.getMessage, err.some))
 
-  private def put(request: PutObjectRequest, body: RequestBody): Either[IoError, PutObjectResponse] =
-    Try {
-      s3.putObject(request, body)
-    }.toEither.leftMap(err => IoError(err.getMessage, err.some))
+  private def put(request: PutObjectRequest, body: RequestBody): Either[IoError, PutObjectResponse] = catchAsIoError {
+    s3.putObject(request, body)
+  }
 
   private def getFileStream(
     getObjectRequest: GetObjectRequest

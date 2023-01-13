@@ -30,6 +30,7 @@ final case class AppConfig(
 )
 
 sealed trait Mode
-case object FixPaths                extends Mode
-case object Merge                   extends Mode
-case object CompareMetadataWithData extends Mode
+case object FixPaths                                                              extends Mode
+case object Merge                                                                 extends Mode
+case object CompareMetadataWithData                                               extends Mode
+final case class CreateMetadata(maxMicroBatchNumber: Long, compactionNumber: Int) extends Mode
