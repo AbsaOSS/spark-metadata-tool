@@ -36,13 +36,11 @@ import za.co.absa.spark_metadata_tool.model.{
   FixPaths,
   Hdfs,
   InitializationError,
-  IoError,
   JsonLine,
   Merge,
   NotFoundError,
   S3,
   SinkFileStatus,
-  StringLine,
   TargetFilesystem,
   Unix,
   UnknownError
@@ -50,17 +48,9 @@ import za.co.absa.spark_metadata_tool.model.{
 
 import scala.util.Try
 import scala.util.chaining._
-import scala.util.matching.Regex
 
 object Application extends App {
   implicit private val logger: Logger = org.log4s.getLogger
-  private val dataFileRe: Regex = ("^part-(\\d{4,})-" + // Part number
-    "[0-9a-fA-F]{8}-" + // first 8 characters of uuid
-    "[0-9a-fA-F]{4}-" + // 4 characters of uuid separated by -
-    "[0-9a-fA-F]{4}-" +
-    "[0-9a-fA-F]{4}-" +
-    "[0-9a-fA-F]{12}" +           // last 12 hexadecimal characters of uuid
-    "(?:\\.snappy)?\\.parquet").r // extension, that may not be compressed by snappy
 
   run(args).leftMap {
     case err: AppErrorWithThrowable => err.ex.fold(logger.error(err.toString))(e => logger.error(e)(err.msg))
@@ -73,7 +63,7 @@ object Application extends App {
            case FixPaths                => fixPaths(conf, io, tool)
            case Merge                   => mergeMetadataFiles(conf, io, tool)
            case CompareMetadataWithData => compareMetadataWithData(conf, io, tool)
-           case m: CreateMetadata       => createMetadata(conf, io, tool, m)
+           case m: CreateMetadata       => createMetadata(conf, io, tool, new DataTool(io), m)
          }
     backupPath = new Path(s"${conf.path}/$BackupDir")
     _ <- conf.mode match {
@@ -169,50 +159,31 @@ object Application extends App {
     config: AppConfig,
     io: FileManager,
     tool: MetadataTool,
+    dataTool: DataTool,
     createMetadata: CreateMetadata
   ): Either[AppError, Unit] = {
     val metadataDir = new Path(config.path, SparkMetadataDir)
     for {
-      _            <- io.makeDir(metadataDir)
-      allDataFiles <- io.listFiles(config.path).map(_.flatMap(p => dataFilePartNumber(p).map((p, _))).sortBy(_._2))
-      maxUBatchNum =
-        math.min(createMetadata.maxMicroBatchNumber, allDataFiles.lastOption.map(_._2).getOrElse(0)) // TODO check this!
-      lastCompaction = maxUBatchNum - (maxUBatchNum % createMetadata.compactionNumber) - 1
-      dataFiles      = allDataFiles.filter(_._2 <= maxUBatchNum)
-      _             <- checkContainsAllDataFiles(dataFiles)
+      _             <- io.makeDir(metadataDir)
+      dataFiles     <- dataTool.listDataFilesUpToPart(config.path, createMetadata.maxMicroBatchNumber)
+      lastCompaction = Compaction.lastCompaction(createMetadata.maxMicroBatchNumber, createMetadata.compactionNumber)
       statuses <- dataFiles
-                    .map(df => io.getFileStatus(df._1).map(s => (s, df._2)))
+                    .map(df => io.getFileStatus(df._2).map(s => (df._1, s)))
                     .sequence
-                    .map(_.map(s => (SinkFileStatus.from(s._1, Action.Add), s._2)))
-      compactionStatusLines =
-        statuses.filter(_._2 < lastCompaction).map(_._1.asJson).map(JsonLine).toList.prepended(StringLine("v1"))
-      _ <- tool.saveFile(new Path(metadataDir, s"$lastCompaction.compact"), compactionStatusLines, config.dryRun)
-      nonCompactedLines =
-        statuses.filter(_._2 >= lastCompaction).map(s => (Seq(StringLine("v1"), JsonLine(s._1.asJson)), s._2.toString))
-      _ <- nonCompactedLines.map(s => tool.saveFile(new Path(metadataDir, s._2), s._1, config.dryRun)).sequence
+                    .map(_.map(s => (s._1, SinkFileStatus.from(s._2, Action.Add))))
+      _ <- tool.saveCompactedMetadata(
+             metadataDir,
+             lastCompaction,
+             statuses.filter(_._1 <= lastCompaction).map(_._2),
+             config.dryRun
+           )
+      _ <- tool.saveMetadataFiles(
+             metadataDir,
+             statuses.filter(_._1 > lastCompaction),
+             config.dryRun
+           )
     } yield ()
   }
-
-  private[spark_metadata_tool] def dataFilePartNumber(path: Path): Option[Int] =
-    dataFileRe
-      .findFirstMatchIn(path.getName)
-      .map(_.group(1))
-      .map(_.toInt)
-
-  private[spark_metadata_tool] def checkContainsAllDataFiles(dataFiles: Seq[(Path, Int)]): Either[IoError, Unit] =
-    if (dataFiles.isEmpty) {
-      IoError("directory doesn't seem to contain any datafiles", None).asLeft
-    } else {
-      val diff: Set[Int] = (0 to dataFiles.last._2).toSet -- dataFiles.map(_._2)
-      if (diff.nonEmpty) {
-        IoError(s"Data directory is missing parts: ${diff.mkString(",")}", None).asLeft
-      } else {
-        Right(())
-      }
-    }
-
-  private def stripExtensions(pth: Path): String =
-    pth.getName.takeWhile(_ == '.')
 
   private def printDetectedDataIssues(
     notDeletedData: Iterable[Path],

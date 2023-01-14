@@ -13,15 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package za.co.absa.spark_metadata_tool.model
 
-import org.apache.hadoop.fs.Path
+package za.co.absa.spark_metadata_tool
 
-case class ToolFileStatus(
-  path: Path,
-  size: Long,
-  isDir: Boolean,
-  modificationTime: Long,
-  blockReplication: Int,
-  blockSize: Long
-)
+object Compaction {
+
+  def filesSinceLastCompaction(maxMicroBatchNumber: Long, compactionNumber: Int): Seq[Long] =
+    lastCompaction(maxMicroBatchNumber, compactionNumber) to maxMicroBatchNumber
+
+  def lastCompaction(maxMicroBatchNumber: Long, compactionNumber: Int): Long =
+    maxMicroBatchNumber - (maxMicroBatchNumber % compactionNumber) - 1
+
+}

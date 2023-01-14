@@ -18,6 +18,7 @@ package za.co.absa.spark_metadata_tool
 
 import _root_.io.circe.parser._
 import _root_.io.circe.syntax._
+import _root_.io.circe.generic.auto._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
 import org.log4s.Logger
@@ -34,12 +35,13 @@ import za.co.absa.spark_metadata_tool.model.StringLine
 import za.co.absa.spark_metadata_tool.model.IoError
 import za.co.absa.spark_metadata_tool.model.ParsingError
 import za.co.absa.spark_metadata_tool.model.MetadataRecord
+import za.co.absa.spark_metadata_tool.model.SinkFileStatus
 
 import scala.util.Try
 import scala.util.chaining._
 
 class MetadataTool(io: FileManager) {
-  private val compactFileSuffix = "compact"
+  private val compactFileSuffix       = "compact"
   implicit private val logger: Logger = org.log4s.getLogger
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
@@ -82,6 +84,24 @@ class MetadataTool(io: FileManager) {
     newBasePath: Path,
     firstPartitionKey: Option[String]
   ): Either[AppError, Seq[FileLine]] = data.traverse(line => processLine(line, newBasePath, firstPartitionKey))
+
+  def saveCompactedMetadata(
+    dir: Path,
+    metadata: Long,
+    lines: Seq[SinkFileStatus],
+    dryRun: Boolean
+  ): Either[AppError, Unit] =
+    saveFile(
+      new Path(dir, s"$metadata.$compactFileSuffix"),
+      Seq(StringLine("v1")) ++ lines.map(_.asJson).map(JsonLine),
+      dryRun
+    )
+
+  def saveMetadataFiles(dir: Path, metadata: Seq[(Int, SinkFileStatus)], dryRun: Boolean): Either[AppError, Unit] =
+    metadata
+      .map(m => saveFile(new Path(dir, m._1.toString), Seq(StringLine("v1"), JsonLine(m._2.asJson)), dryRun))
+      .sequence
+      .map(_ => ())
 
   /** Saves the data into a file on provided path. If the file already exists, its contents will be overwritten.
     *
