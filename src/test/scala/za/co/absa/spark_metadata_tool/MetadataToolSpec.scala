@@ -86,6 +86,14 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res.left.value shouldBe err
   }
 
+  "saveMetadataFiles" should "create properly formatted metadata files" in {
+
+  }
+
+  "saveCompactedMetadata" should "create properly formatted compacted metadata file" in {
+
+  }
+
   "fixPaths" should "replace old paths if no partition key was provided" in {
     val numLines = 10
     val data: Seq[FileLine] =
