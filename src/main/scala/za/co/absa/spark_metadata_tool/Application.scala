@@ -17,8 +17,6 @@
 package za.co.absa.spark_metadata_tool
 
 import cats.implicits._
-import _root_.io.circe.generic.auto._
-import _root_.io.circe.syntax._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.security.UserGroupInformation
@@ -36,7 +34,6 @@ import za.co.absa.spark_metadata_tool.model.{
   FixPaths,
   Hdfs,
   InitializationError,
-  JsonLine,
   Merge,
   NotFoundError,
   S3,
