@@ -17,6 +17,8 @@
 package za.co.absa.spark_metadata_tool
 
 import _root_.io.circe.parser._
+import _root_.io.circe.syntax._
+import _root_.io.circe.generic.auto._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
 import org.scalamock.scalatest.MockFactory
@@ -25,15 +27,7 @@ import org.scalatest.OptionValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import za.co.absa.spark_metadata_tool.io.FileManager
-import za.co.absa.spark_metadata_tool.model.FileLine
-import za.co.absa.spark_metadata_tool.model.IoError
-import za.co.absa.spark_metadata_tool.model.JsonLine
-import za.co.absa.spark_metadata_tool.model.MetadataFile
-import za.co.absa.spark_metadata_tool.model.NotFoundError
-import za.co.absa.spark_metadata_tool.model.StringLine
-import za.co.absa.spark_metadata_tool.model.ParsingError
-import za.co.absa.spark_metadata_tool.model.MetadataRecord
-
+import za.co.absa.spark_metadata_tool.model.{FileLine, IoError, JsonLine, MetadataFile, MetadataRecord, NotFoundError, ParsingError, SinkFileStatus, StringLine}
 import MetadataToolSpec._
 
 class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with EitherValues with MockFactory {
@@ -87,10 +81,144 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   "saveMetadataFiles" should "create properly formatted metadata files" in {
+    val fileStatus = SinkFileStatus(
+      path = s"$s3BaseString/part-0000-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
+      size = 1234L,
+      isDir = false,
+      modificationTime = System.currentTimeMillis(),
+      blockReplication = 1,
+      blockSize = 132456L,
+      action = "add"
+    )
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
 
+    (fileManager.write _)
+      .expects(
+        new Path(metadataPath, "0"),
+        Seq(
+          "v1",
+          fileStatus.asJson.noSpaces
+        )
+      )
+      .returning(Right(()))
+
+    val res = metadataTool.saveMetadataFiles(
+      metadataPath,
+      Seq((0, fileStatus)),
+      dryRun = false
+    )
+
+    res should equal(Right(()))
+  }
+
+  it should "create multiple metadata files from multiple inputs" in {
+    val zerothFileStatus = SinkFileStatus(
+      path = s"$s3BaseString/part-0000-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
+      size = 1234L,
+      isDir = false,
+      modificationTime = System.currentTimeMillis(),
+      blockReplication = 1,
+      blockSize = 132456L,
+      action = "add"
+    )
+    val firstFileStatus = SinkFileStatus(
+      path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
+      size = 1234L,
+      isDir = false,
+      modificationTime = System.currentTimeMillis(),
+      blockReplication = 1,
+      blockSize = 132456L,
+      action = "add"
+    )
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _)
+      .expects(
+        new Path(metadataPath, "0"),
+        Seq(
+          "v1",
+          zerothFileStatus.asJson.noSpaces
+        )
+      )
+      .returning(Right(()))
+    (fileManager.write _)
+      .expects(
+        new Path(metadataPath, "1"),
+        Seq(
+          "v1",
+          firstFileStatus.asJson.noSpaces
+        )
+      )
+      .returning(Right(()))
+
+    val res = metadataTool.saveMetadataFiles(
+      metadataPath,
+      Seq((0, zerothFileStatus), (1, firstFileStatus)),
+      dryRun = false
+    )
+
+    res should equal(Right(()))
+  }
+
+  it should "fail when at least on metadata file can not be written" in  {
+    val fileStatus = SinkFileStatus(
+      path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
+      size = 1234L,
+      isDir = false,
+      modificationTime = System.currentTimeMillis(),
+      blockReplication = 1,
+      blockSize = 132456L,
+      action = "add"
+    )
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(*, *).returning(Right(()))
+    (fileManager.write _).expects(*, *).returning(Left(IoError("File already exists", None)))
+
+    val res = metadataTool.saveMetadataFiles(metadataPath, Seq((0, fileStatus), (1, fileStatus)), dryRun = false)
+
+    res should equal(Left(IoError("File already exists", None)))
   }
 
   "saveCompactedMetadata" should "create properly formatted compacted metadata file" in {
+    val zerothFileStatus = SinkFileStatus(
+      path = s"$s3BaseString/part-0000-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
+      size = 1234L,
+      isDir = false,
+      modificationTime = System.currentTimeMillis(),
+      blockReplication = 1,
+      blockSize = 132456L,
+      action = "add"
+    )
+    val firstFileStatus = zerothFileStatus.copy(
+      path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet"
+    )
+    val secondFileStatus = zerothFileStatus.copy(
+      path = s"$s3BaseString/part-0002-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet"
+    )
+    val metadataDir = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataDir, "2.compact"),
+      Seq(
+        "v1",
+        zerothFileStatus.asJson.noSpaces,
+        firstFileStatus.asJson.noSpaces,
+        secondFileStatus.asJson.noSpaces
+      )
+    ).returning(Right(()))
+
+    val res = metadataTool.saveCompactedMetadata(
+      metadataDir,
+      metadata = 2,
+      lines = Seq(zerothFileStatus, firstFileStatus, secondFileStatus),
+      dryRun = false
+    )
+
+    res should equal(Right(()))
+  }
+
+  it should "fail on save metadata failure" in {
 
   }
 
@@ -257,13 +385,13 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   "listFilesRecursively" should "return all files recursively" in {
-    val root = unixBasePath
-    val filesInRoot = Seq(new Path(s"$unixBasePath/a.file"), new Path(s"$unixBasePath/b.file"))
-    val subDir = new Path(s"$unixBasePath/subDir")
-    val filesInSubDir = Seq(new Path(s"$subDir/c.file"), new Path(s"$subDir/d.file"))
-    val subSubOneDir = new Path(s"$subDir/subSubOneDir")
+    val root                = unixBasePath
+    val filesInRoot         = Seq(new Path(s"$unixBasePath/a.file"), new Path(s"$unixBasePath/b.file"))
+    val subDir              = new Path(s"$unixBasePath/subDir")
+    val filesInSubDir       = Seq(new Path(s"$subDir/c.file"), new Path(s"$subDir/d.file"))
+    val subSubOneDir        = new Path(s"$subDir/subSubOneDir")
     val filesInSubSubOneDir = Seq(new Path(s"$subSubOneDir/e.file"), new Path(s"$subSubOneDir/f.file"))
-    val subSubTwoDir = new Path(s"$subDir/subSubTwoDir")
+    val subSubTwoDir        = new Path(s"$subDir/subSubTwoDir")
     val filesInSubSubTwoDir = Seq(new Path(s"$subSubTwoDir/g.file"), new Path(s"$subSubTwoDir/h.file"))
     val expected: Seq[Path] = filesInRoot ++ filesInSubDir ++ filesInSubSubOneDir ++ filesInSubSubTwoDir
 
@@ -293,10 +421,10 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   "getMetaRecords" should "return all metadata records from metadata" in {
-    val path = unixBasePath
+    val path              = unixBasePath
     val versionLineString = versionLine.value
-    val metadataRecordA = MetadataRecord(new Path(s"$unixBasePath/a.file"), "add")
-    val metadataRecordB = MetadataRecord(new Path(s"$unixBasePath/B.file"), "add")
+    val metadataRecordA   = MetadataRecord(new Path(s"$unixBasePath/a.file"), "add")
+    val metadataRecordB   = MetadataRecord(new Path(s"$unixBasePath/B.file"), "add")
 
     val fileA = validLineWithAction(metadataRecordA.path, metadataRecordA.action)
     val fileB = validLineWithAction(metadataRecordB.path, metadataRecordB.action)
@@ -316,20 +444,20 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     (fileManager.readAllLines _).expects(path).returning(stringLines.map(_.toString).asRight)
 
     val expected = MetadataToolSpec.getParsingError(path.toString)
-    val res = metadataTool.getMetaRecords(path)
+    val res      = metadataTool.getMetaRecords(path)
 
     res.left.value shouldBe expected
   }
 
   it should "fail if any JSON line doesn't contain 'action' key" in {
-    val path = unixBasePath
+    val path              = unixBasePath
     val versionLineString = versionLine.value
-    val corruptedLine = validLine(path)
+    val corruptedLine     = validLine(path)
 
     (fileManager.readAllLines _).expects(path).returning(Seq(versionLineString, corruptedLine).asRight)
 
     val expected = NotFoundError(s"Couldn't find action in JSON line $corruptedLine")
-    val res = metadataTool.getMetaRecords(path)
+    val res      = metadataTool.getMetaRecords(path)
 
     res.left.value shouldBe expected
   }
@@ -481,7 +609,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   "filterMetadataFiles" should "return only files with correct names" in {
-    val metadataFiles = Seq (
+    val metadataFiles = Seq(
       new Path("hdfs://path/to/root/_spark_metadata/0"),
       new Path("hdfs://path/to/root/_spark_metadata/1"),
       new Path("hdfs://path/to/root/_spark_metadata/2.compact"),
@@ -489,7 +617,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
       new Path("hdfs://path/to/root/_spark_metadata/5"),
       new Path("hdfs://path/to/root/_spark_metadata/6.compact"),
       new Path("hdfs://path/to/root/_spark_metadata/7"),
-      new Path("hdfs://path/to/root/_spark_metadata/8"),
+      new Path("hdfs://path/to/root/_spark_metadata/8")
     )
 
     val nonMetadataFiles = Seq(
@@ -527,7 +655,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val lines: Seq[FileLine] = Seq(MetadataToolSpec.correctJsonLine, MetadataToolSpec.correctJsonLine)
 
     val expected = MetadataToolSpec.getParsingError(path)
-    val res = metadataTool.verifyMetadataFileContent(path, lines)
+    val res      = metadataTool.verifyMetadataFileContent(path, lines)
 
     res.left.value shouldBe expected
   }
@@ -538,7 +666,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val lines: Seq[FileLine] = Seq(MetadataToolSpec.notJsonLine, MetadataToolSpec.correctJsonLine)
 
     val expected = MetadataToolSpec.getParsingError(path)
-    val res = metadataTool.verifyMetadataFileContent(path, lines)
+    val res      = metadataTool.verifyMetadataFileContent(path, lines)
 
     res.left.value shouldBe expected
   }
@@ -553,7 +681,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     )
 
     val expected = MetadataToolSpec.getParsingError(path)
-    val res = metadataTool.verifyMetadataFileContent(path, lines)
+    val res      = metadataTool.verifyMetadataFileContent(path, lines)
 
     res.left.value shouldBe expected
   }
@@ -564,7 +692,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val lines: Seq[FileLine] = Seq(MetadataToolSpec.versionLine, MetadataToolSpec.incorrectJsonLine)
 
     val expected = MetadataToolSpec.getParsingError(path)
-    val res = metadataTool.verifyMetadataFileContent(path, lines)
+    val res      = metadataTool.verifyMetadataFileContent(path, lines)
 
     res.left.value shouldBe expected
   }
@@ -575,7 +703,7 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     val lines: Seq[FileLine] = Seq()
 
     val expected = MetadataToolSpec.getParsingError(path)
-    val res = metadataTool.verifyMetadataFileContent(path, lines)
+    val res      = metadataTool.verifyMetadataFileContent(path, lines)
 
     res.left.value shouldBe expected
   }

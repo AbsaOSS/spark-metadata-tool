@@ -20,20 +20,27 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hdfs.MiniDFSCluster
 import org.scalamock.scalatest.MockFactory
+import org.scalatest.Inside.inside
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues, OptionValues}
+import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.io.File
 import java.nio.file
 import java.nio.file.Paths
 import java.util.UUID
 
-
-class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with EitherValues with MockFactory
-  with BeforeAndAfterEach with BeforeAndAfterAll {
+class HdfsFileManagerSpec
+    extends AnyFlatSpec
+    with Matchers
+    with OptionValues
+    with EitherValues
+    with MockFactory
+    with BeforeAndAfterEach
+    with BeforeAndAfterAll {
   val clusterPath: file.Path = Paths.get("miniclusters", s"testCluster_${UUID.randomUUID().toString}")
-  val conf = new Configuration()
+  val conf                   = new Configuration()
   conf.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, clusterPath.toAbsolutePath.toString)
   val miniDFSCluster: MiniDFSCluster = new MiniDFSCluster.Builder(conf).build()
   miniDFSCluster.waitClusterUp()
@@ -41,17 +48,16 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
 
   val testDataFolder = "/hdfsTestData"
   // getting absolute path and replacing actions are required to keep test running on windows too
-  val testDataRootDir: String = new File(getClass.getResource(testDataFolder).toURI).getAbsolutePath.
-    replace("\\", "/")
-  val testDataHdfsRootDir: String = s"${miniDFSCluster.getFileSystem.getUri.toString}$testDataFolder"
-  val topLevelDirOne: String = "dir1"
-  val fileOneInDirOne: String = "testFile1.txt"
-  val fileTwoInDirOne: String = "testFile2.txt"
-  val topLevelDirTwo: String = "dir2"
-  val innerDirInDirTwo: String = "innerDir1"
+  val testDataRootDir: String           = new File(getClass.getResource(testDataFolder).toURI).getAbsolutePath.replace("\\", "/")
+  val testDataHdfsRootDir: String       = s"${miniDFSCluster.getFileSystem.getUri.toString}$testDataFolder"
+  val topLevelDirOne: String            = "dir1"
+  val fileOneInDirOne: String           = "testFile1.txt"
+  val fileTwoInDirOne: String           = "testFile2.txt"
+  val topLevelDirTwo: String            = "dir2"
+  val innerDirInDirTwo: String          = "innerDir1"
   val fileOneInInnerDirInDirTwo: String = "testFile1.txt"
 
-  val hdfsFileManager: HdfsFileManager = HdfsFileManager(miniDFSCluster.getFileSystem())
+  val hdfsFileManager: HdfsFileManager      = HdfsFileManager(miniDFSCluster.getFileSystem())
   val unixFileManager: UnixFileManager.type = UnixFileManager
 
   override def beforeEach(): Unit = {
@@ -75,7 +81,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
   "ListFiles" should "list files in dir" in {
     val resultEmpty = hdfsFileManager.listFiles(new Path(testDataHdfsRootDir))
 
-    val resultDefined = hdfsFileManager.listFiles(new Path(s"$testDataHdfsRootDir/$topLevelDirOne"))
+    val resultDefined   = hdfsFileManager.listFiles(new Path(s"$testDataHdfsRootDir/$topLevelDirOne"))
     val expectedDefined = unixFileManager.listFiles(new Path(s"$testDataRootDir/$topLevelDirOne"))
     resultEmpty.isRight shouldBe true
     resultEmpty.value shouldBe Seq.empty[Path]
@@ -90,7 +96,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
   "ListDirectories" should "list directories in dir" in {
     val resultEmpty = hdfsFileManager.listDirectories(new Path(s"$testDataHdfsRootDir/$topLevelDirOne"))
 
-    val resultDefined = hdfsFileManager.listDirectories(new Path(s"$testDataHdfsRootDir"))
+    val resultDefined   = hdfsFileManager.listDirectories(new Path(s"$testDataHdfsRootDir"))
     val expectedDefined = unixFileManager.listDirectories(new Path(s"$testDataRootDir"))
     resultEmpty.isRight shouldBe true
     resultEmpty.value shouldBe Seq.empty[Path]
@@ -120,7 +126,7 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
 
   "Write" should "write lines into the file" in {
     val dataToWrite = Seq("111", "222")
-    val pathToDir = s"$testDataHdfsRootDir/$topLevelDirOne"
+    val pathToDir   = s"$testDataHdfsRootDir/$topLevelDirOne"
 
     val _ = hdfsFileManager.write(
       new Path(s"$pathToDir/$fileOneInDirOne"),
@@ -194,9 +200,11 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
     val filesBeforeDelete = hdfsFileManager.listFiles(
       new Path(s"$testDataHdfsRootDir/$topLevelDirOne")
     )
-    val _ = hdfsFileManager.delete(Seq(
-      new Path(s"$testDataHdfsRootDir/$topLevelDirOne/$fileOneInDirOne")
-    ))
+    val _ = hdfsFileManager.delete(
+      Seq(
+        new Path(s"$testDataHdfsRootDir/$topLevelDirOne/$fileOneInDirOne")
+      )
+    )
     val filesAfterDelete = hdfsFileManager.listFiles(
       new Path(s"$testDataHdfsRootDir/$topLevelDirOne")
     )
@@ -210,6 +218,29 @@ class HdfsFileManagerSpec extends AnyFlatSpec with Matchers with OptionValues wi
       contain(s"/$topLevelDirOne/$fileOneInDirOne")
     filesAfterDelete.value.map(removeRoot(_, testDataHdfsRootDir)) should
       not contain s"/$topLevelDirOne/$fileOneInDirOne"
+  }
+
+  "makeDir" should "create a directory in specified directory tree path" in {
+    val res               = hdfsFileManager.makeDir(new Path(testDataHdfsRootDir, "new-dir"))
+    val filesAfterMakeDir = hdfsFileManager.listDirectories(new Path(testDataHdfsRootDir))
+
+    res should matchPattern { case Right(_) => }
+
+    inside(filesAfterMakeDir) { case Right(dirs) =>
+      dirs.exists(_.getName == "new-dir")
+    }
+  }
+
+  it should "fail to create dir when directory already exists" in {
+    val res = hdfsFileManager.makeDir(new Path(testDataHdfsRootDir, topLevelDirOne))
+
+    inside(res) { case Left(IoError(msg, None)) => msg.endsWith(": File exists") }
+  }
+
+  it should "fail when parent dir does not exist" in {
+    val res = hdfsFileManager.makeDir(new Path(testDataHdfsRootDir, "non-existing-dir/new-dir"))
+
+    inside(res) { case Left(IoError(msg, _)) => msg.endsWith(": No such file or directory") }
   }
 
   private def removeRoot(path: Path, rootPrefix: String): String = path.toString.replace(rootPrefix, "")
