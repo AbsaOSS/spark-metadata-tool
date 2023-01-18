@@ -15,15 +15,18 @@
  */
 package za.co.absa.spark_metadata_tool.model
 
+import org.apache.hadoop.fs.FileStatus
+
 object SinkFileStatus {
-  def from(status: ToolFileStatus, action: String): SinkFileStatus =
+
+  def from(status: FileStatus, action: Action): SinkFileStatus =
     SinkFileStatus(
-      status.path.toString,
-      status.size,
-      status.isDir,
-      status.modificationTime,
-      status.blockReplication,
-      status.blockSize,
+      status.getPath.toString,
+      status.getLen,
+      status.isDirectory,
+      status.getModificationTime,
+      status.getReplication,
+      status.getBlockSize,
       action
     )
 }

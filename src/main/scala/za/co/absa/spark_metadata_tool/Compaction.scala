@@ -18,9 +18,6 @@ package za.co.absa.spark_metadata_tool
 
 object Compaction {
 
-  def filesSinceLastCompaction(maxMicroBatchNumber: Long, compactionNumber: Int): Seq[Long] =
-    lastCompaction(maxMicroBatchNumber, compactionNumber) to maxMicroBatchNumber
-
   def lastCompaction(maxMicroBatchNumber: Long, compactionNumber: Int): Long =
     maxMicroBatchNumber - (maxMicroBatchNumber % compactionNumber) - 1
 

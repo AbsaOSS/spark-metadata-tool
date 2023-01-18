@@ -17,8 +17,8 @@
 package za.co.absa.spark_metadata_tool.io
 
 import org.log4s.Logger
-import za.co.absa.spark_metadata_tool.model.{IoError, ToolFileStatus}
-import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
+import za.co.absa.spark_metadata_tool.model.IoError
+import org.apache.hadoop.fs.{FileStatus, FileSystem, FileUtil, Path}
 import cats.implicits._
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 
@@ -74,17 +74,8 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
       _ <- catchAsIoError(hdfs.mkdirs(dir))
     } yield ()
 
-  override def getFileStatus(file: Path): Either[IoError, ToolFileStatus] =
-    catchAsIoError(hdfs.getFileStatus(file)).map(status =>
-      ToolFileStatus(
-        path = status.getPath,
-        size = status.getLen,
-        isDir = status.isDirectory,
-        modificationTime = status.getModificationTime,
-        blockReplication = status.getReplication.toInt,
-        blockSize = status.getBlockSize
-      )
-    )
+  override def getFileStatus(file: Path): Either[IoError, FileStatus] =
+    catchAsIoError(hdfs.getFileStatus(file))
 
   private def listDirectory(path: Path): Either[IoError, Seq[Path]] =
     checkDirectoryExists(path) match {

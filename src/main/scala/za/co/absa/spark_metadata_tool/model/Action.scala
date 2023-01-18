@@ -15,7 +15,12 @@
  */
 package za.co.absa.spark_metadata_tool.model
 
+import shapeless._
+import shapeless.tag._
+
 object Action {
-  val Add: String    = "add"
-  val Delete: String = "delete"
+  sealed trait ActionTag
+  val Add: Action    = tag[ActionTag]("add")
+  val Delete: Action = tag[ActionTag]("delete")
 }
+type Action = String @@ Action.ActionTag;

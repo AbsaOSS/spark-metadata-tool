@@ -17,10 +17,10 @@
 package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileStatus, Path}
 import org.log4s.Logger
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
-import za.co.absa.spark_metadata_tool.model.{IoError, ToolFileStatus}
+import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.io.File
 import java.io.FileOutputStream
@@ -75,19 +75,19 @@ case object UnixFileManager extends FileManager {
     paths.foreach(p => Files.delete(Paths.get(withScheme(p).toUri)))
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
-  override def getFileStatus(file: Path): Either[IoError, ToolFileStatus] =
+  override def getFileStatus(file: Path): Either[IoError, FileStatus] =
     for {
       path             <- catchAsIoError(Paths.get(withScheme(file).toUri))
       size             <- catchAsIoError(Files.size(path))
       isDir            <- catchAsIoError(Files.isDirectory(path))
       modificationTime <- catchAsIoError(Files.getLastModifiedTime(path)).map(_.toMillis)
-    } yield ToolFileStatus(
-      path = withScheme(file),
+    } yield new FileStatus(
       size,
       isDir,
+      1,
+      1,
       modificationTime,
-      blockReplication = 1,
-      blockSize = -1
+      withScheme(file)
     )
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {

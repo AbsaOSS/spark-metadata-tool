@@ -24,24 +24,7 @@ import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
-import za.co.absa.spark_metadata_tool.model.{
-  Action,
-  AppConfig,
-  AppError,
-  AppErrorWithThrowable,
-  CompareMetadataWithData,
-  CreateMetadata,
-  FixPaths,
-  Hdfs,
-  InitializationError,
-  Merge,
-  NotFoundError,
-  S3,
-  SinkFileStatus,
-  TargetFilesystem,
-  Unix,
-  UnknownError
-}
+import za.co.absa.spark_metadata_tool.model.{Action, AppConfig, AppError, AppErrorWithThrowable, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
 
 import scala.util.Try
 import scala.util.chaining._
@@ -167,7 +150,7 @@ object Application extends App {
       statuses <- dataFiles
                     .map(df => io.getFileStatus(df._2).map(s => (df._1, s)))
                     .sequence
-                    .map(_.map(s => (s._1, SinkFileStatus.from(s._2, Action.Add))))
+                    .map(_.map { case (partNr, status) => (partNr, SinkFileStatus.from(status, Action.Add))})
       _ <- tool.saveCompactedMetadata(
              metadataDir,
              lastCompaction,

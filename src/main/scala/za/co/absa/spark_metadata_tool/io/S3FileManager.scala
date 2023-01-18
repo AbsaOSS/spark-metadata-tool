@@ -17,7 +17,7 @@
 package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileStatus, Path}
 import org.log4s.Logger
 import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
@@ -25,7 +25,7 @@ import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest, PutObjectResponse}
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
-import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError, ToolFileStatus}
+import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError}
 
 import java.io.ByteArrayOutputStream
 import scala.io.Source
@@ -107,15 +107,15 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       case _     => IoError(s"${dir.getName}: File exists", None).asLeft
     }
 
-  override def getFileStatus(file: Path): Either[IoError, ToolFileStatus] =
+  override def getFileStatus(file: Path): Either[IoError, FileStatus] =
     headObject(file).map(head =>
-      ToolFileStatus(
-        path = file,
-        size = head.contentLength(),
-        isDir = head.contentType() == "application/x-directory",
-        modificationTime = head.lastModified().toEpochMilli,
-        blockReplication = -1,
-        blockSize = -1
+      new FileStatus(
+        head.contentLength(),
+        head.contentType() == "application/x-directory",
+        1,
+        1,
+        head.lastModified().toEpochMilli,
+        file
       )
     )
 
