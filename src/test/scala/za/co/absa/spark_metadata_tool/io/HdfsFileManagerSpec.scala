@@ -17,8 +17,10 @@
 package za.co.absa.spark_metadata_tool.io
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.permission.FsPermission
+import org.apache.hadoop.fs.{FSDataInputStream, FSDataOutputStream, FileStatus, FileSystem, Path}
 import org.apache.hadoop.hdfs.MiniDFSCluster
+import org.apache.hadoop.util.Progressable
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.Inside.inside
 import org.scalatest.flatspec.AnyFlatSpec
@@ -26,7 +28,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, EitherValues, OptionValues}
 import za.co.absa.spark_metadata_tool.model.IoError
 
-import java.io.File
+import java.io.{File, FileNotFoundException, IOException}
+import java.net.URI
 import java.nio.file
 import java.nio.file.Paths
 import java.util.UUID
@@ -241,6 +244,47 @@ class HdfsFileManagerSpec
     val res = hdfsFileManager.makeDir(new Path(testDataHdfsRootDir, "non-existing-dir/new-dir"))
 
     inside(res) { case Left(IoError(msg, _)) => msg.endsWith(": No such file or directory") }
+  }
+
+  it should "fail when hdfs FileSystem failure occurs" in {
+    val parentPath = new Path("hdfs:///root/")
+    val dirPath    = new Path(parentPath, "new")
+    val fsMock = new FileSystem {
+
+      override def mkdirs(f: Path, permission: FsPermission): Boolean = {
+        f should equal(dirPath)
+        throw new IOException("hdfs error")
+      }
+
+      override def getFileStatus(f: Path): FileStatus =
+        if (parentPath == f) {
+          new FileStatus(0L, true, 3, 134217728L, System.currentTimeMillis(), parentPath)
+        } else {
+          throw new FileNotFoundException(s"$f: does not exist")
+        }
+
+      override def getUri: URI                                       = ???
+      override def open(f: Path, bufferSize: Int): FSDataInputStream = ???
+      override def create(
+        f: Path,
+        permission: FsPermission,
+        overwrite: Boolean,
+        bufferSize: Int,
+        replication: Short,
+        blockSize: Long,
+        progress: Progressable
+      ): FSDataOutputStream                                                                     = ???
+      override def append(f: Path, bufferSize: Int, progress: Progressable): FSDataOutputStream = ???
+      override def rename(src: Path, dst: Path): Boolean                                        = ???
+      override def delete(f: Path, recursive: Boolean): Boolean                                 = ???
+      override def listStatus(f: Path): Array[FileStatus]                                       = ???
+      override def setWorkingDirectory(new_dir: Path): Unit                                     = ???
+      override def getWorkingDirectory: Path                                                    = ???
+    }
+    val hdfsFileManager = HdfsFileManager(fsMock)
+
+    val res = hdfsFileManager.makeDir(dirPath)
+    res should matchPattern { case Left(IoError("hdfs error", Some(_))) => }
   }
 
   private def removeRoot(path: Path, rootPrefix: String): String = path.toString.replace(rootPrefix, "")
