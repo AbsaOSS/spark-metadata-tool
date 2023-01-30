@@ -77,6 +77,9 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
   override def getFileStatus(file: Path): Either[IoError, FileStatus] =
     catchAsIoError(hdfs.getFileStatus(file))
 
+  override def walkFiles(basePath: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
+    catchAsIoError(hdfs.globStatus(basePath, (pth: Path) => filter(pth))).map(_.filter(_.isFile).map(_.getPath).toSeq)
+
   private def listDirectory(path: Path): Either[IoError, Seq[Path]] =
     checkDirectoryExists(path) match {
       case Right(true) =>

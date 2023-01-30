@@ -25,8 +25,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.PutObjectRequest
-import software.amazon.awssdk.services.s3.model.PutObjectResponse
+import software.amazon.awssdk.services.s3.model.{
+  CommonPrefix,
+  ListObjectsV2Request,
+  ListObjectsV2Response,
+  PutObjectRequest,
+  PutObjectResponse,
+  S3Object
+}
 
 import scala.io.Source
 import scala.util.Using
@@ -61,4 +67,59 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
     content.value shouldBe lines
 
   }
+
+  "makeDir" should "create prefix in bucket tree with no size" in {
+    val rootPath = new Path("s3://bucket/path/to/root")
+    val dirPath  = new Path(rootPath, "child")
+
+    val expectedReq = ListObjectsV2Request
+      .builder()
+      .bucket("bucket")
+      .prefix(s"path/to/")
+      .delimiter("/")
+      .build()
+    val expectedResp = ListObjectsV2Response
+      .builder()
+      .prefix("path/to/")
+      .delimiter("/")
+      .commonPrefixes(
+        CommonPrefix.builder().prefix("path/to/dir").build(),
+        CommonPrefix.builder().prefix("path/to/root").build(),
+        CommonPrefix.builder().prefix("path/to/root/dir1").build(),
+        CommonPrefix.builder().prefix("path/to/root/dir2").build()
+      )
+      .contents(S3Object.builder().key("path/to/root/file1").build())
+      .build()
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
+
+    val putDirRequest = PutObjectRequest
+      .builder()
+      .bucket("bucket")
+      .key("path/to/root/child/")
+      .build()
+    val putDirResp = PutObjectResponse
+      .builder()
+      .build()
+    (s3
+      .putObject(_: PutObjectRequest, _: RequestBody))
+      .expects(putDirRequest, RequestBody.empty())
+      .returning(putDirResp)
+
+    val res = io.makeDir(dirPath)
+
+    res should equal(Right(()))
+
+  }
+
+  it should "fail when prefix already exists" in {}
+
+  it should "fail when parent prefix does not exist" in {}
+
+  it should "fail when creating prefix returns an error" in {}
+
+  "getFileStatus" should "return FileStatus for specified file" in {}
+
+  it should "fail when resource or prefix does not exist" in {}
+
+  it should "fail when s3 return error" in {}
 }

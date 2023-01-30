@@ -23,4 +23,18 @@ package object io {
 
   private[io] def catchAsIoError[R](resource: => R): Either[IoError, R] =
     Either.catchNonFatal(resource).leftMap(err => IoError(err.getMessage, err.some))
+
+  private[io] def falseAsError(err: => IoError)(res: Boolean): Either[IoError, Unit] =
+    if (res) {
+      Right(())
+    } else {
+      Left(err)
+    }
+
+  private[io] def trueAsError(err: => IoError)(res: Boolean): Either[IoError, Unit] =
+    if (res) {
+      Left(err)
+    } else {
+      Right(())
+    }
 }

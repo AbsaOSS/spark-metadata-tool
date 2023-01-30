@@ -23,7 +23,7 @@ import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest, PutObjectResponse}
+import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest}
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError}
 
@@ -101,11 +101,17 @@ case class S3FileManager(s3: S3Client) extends FileManager {
   override def listFiles(path: Path): Either[IoError, Seq[Path]] =
     listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
-  override def makeDir(dir: Path): Either[IoError, Unit] =
-    listDirectories(dir.getParent).map(_.map(_.getName).contains(dir.getName)).flatMap {
-      case false => putToDestination(dir, RequestBody.empty())
-      case _     => IoError(s"${dir.getName}: File exists", None).asLeft
-    }
+  override def makeDir(dir: Path): Either[IoError, Unit] = {
+    val parentDirName = dir.getParent.getName
+    val dirName = dir.getName
+    val s3Normalized = new Path(dir.getParent, dir.getName.stripSuffix("/") + "/")
+    for {
+      dirs         <- listDirectories(dir.getParent.getParent).map(_.filter(_.getParent.getName == parentDirName))
+      _            <- Either.cond(dirs.nonEmpty, (), IoError(s"${dir.getParent}: No such file or directory", None))
+      _            <- Either.cond(dirs.forall(_.getName != dirName), (), IoError(s"${dir.getName}: File exists", None))
+      _            <- putToDestination(s3Normalized, RequestBody.empty())
+    } yield ()
+  }
 
   override def getFileStatus(file: Path): Either[IoError, FileStatus] =
     headObject(file).map(head =>
@@ -119,9 +125,12 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       )
     )
 
+  override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
+    listFiles(baseDir).map(_.filter(filter)).map(_.sortBy(_.toUri))
+
   private def headObject(file: Path): Either[IoError, HeadObjectResponse] = {
     val bucket = getBucket(file)
-    val key = getKey(file, bucket)
+    val key    = getKey(file, bucket)
 
     val request = HeadObjectRequest
       .builder()
@@ -142,7 +151,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       .key(key)
       .build()
 
-    put(objectRequest, body).map(_ => ())
+    catchAsIoError(s3.putObject(objectRequest, body)).map(_ => ())
   }
 
   private def toBytes(lines: Seq[String]): Either[IoError, Array[Byte]] =
@@ -150,10 +159,6 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       lines.foreach(l => stream.write(s"$l\n".getBytes))
       stream.toByteArray
     }.toEither.leftMap(err => IoError(err.getMessage, err.some))
-
-  private def put(request: PutObjectRequest, body: RequestBody): Either[IoError, PutObjectResponse] = catchAsIoError {
-    s3.putObject(request, body)
-  }
 
   private def getFileStream(
     getObjectRequest: GetObjectRequest

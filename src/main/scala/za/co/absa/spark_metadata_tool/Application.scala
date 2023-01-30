@@ -24,7 +24,22 @@ import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
-import za.co.absa.spark_metadata_tool.model.{Action, AppConfig, AppError, AppErrorWithThrowable, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
+import za.co.absa.spark_metadata_tool.model.{
+  AppConfig,
+  AppError,
+  AppErrorWithThrowable,
+  CompareMetadataWithData,
+  CreateMetadata,
+  FixPaths,
+  Hdfs,
+  InitializationError,
+  Merge,
+  NotFoundError,
+  S3,
+  TargetFilesystem,
+  Unix,
+  UnknownError
+}
 
 import scala.util.Try
 import scala.util.chaining._
@@ -143,25 +158,28 @@ object Application extends App {
     createMetadata: CreateMetadata
   ): Either[AppError, Unit] = {
     val metadataDir = new Path(config.path, SparkMetadataDir)
+    print(tool)
+    print(dataTool)
+    print(createMetadata)
     for {
-      _             <- io.makeDir(metadataDir)
-      dataFiles     <- dataTool.listDataFilesUpToPart(config.path, createMetadata.maxMicroBatchNumber)
-      lastCompaction = Compaction.lastCompaction(createMetadata.maxMicroBatchNumber, createMetadata.compactionNumber)
-      statuses <- dataFiles
-                    .map(df => io.getFileStatus(df._2).map(s => (df._1, s)))
-                    .sequence
-                    .map(_.map { case (partNr, status) => (partNr, SinkFileStatus.from(status, Action.Add))})
-      _ <- tool.saveCompactedMetadata(
-             metadataDir,
-             lastCompaction,
-             statuses.filter(_._1 <= lastCompaction).map(_._2),
-             config.dryRun
-           )
-      _ <- tool.saveMetadataFiles(
-             metadataDir,
-             statuses.filter(_._1 > lastCompaction),
-             config.dryRun
-           )
+      _ <- io.makeDir(metadataDir)
+//      dataFiles     <- dataTool.listDataFilesUpToPart(config.path, createMetadata.maxMicroBatchNumber.toInt)
+//      lastCompaction = Compaction.lastCompaction(createMetadata.maxMicroBatchNumber, createMetadata.compactionNumber)
+//      statuses <- dataFiles
+//                    .map(df => io.getFileStatus(df._2).map(s => (df._1, s)))
+//                    .sequence
+//                    .map(_.map { case (partNr, status) => (partNr, SinkFileStatus.from(status, Action.Add))})
+//      _ <- tool.saveCompactedMetadata(
+//             metadataDir,
+//             lastCompaction,
+//             statuses.filter(_._1 <= lastCompaction).map(_._2),
+//             config.dryRun
+//           )
+//      _ <- tool.saveMetadataFiles(
+//             metadataDir,
+//             statuses.filter(_._1 > lastCompaction),
+//             config.dryRun
+//           )
     } yield ()
   }
 

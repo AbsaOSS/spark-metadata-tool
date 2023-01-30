@@ -25,9 +25,9 @@ import za.co.absa.spark_metadata_tool.model.IoError
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
-import java.nio.file.Files
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
 import scala.io.Source
+import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
 import scala.util.Using
 import scala.util.chaining._
@@ -89,6 +89,16 @@ case object UnixFileManager extends FileManager {
       modificationTime,
       withScheme(file)
     )
+
+  override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] = {
+    catchAsIoError {
+      Files
+        .walk(Paths.get(withScheme(baseDir).toUri))
+        .filter(path => filter(new Path(path.toUri)))
+        .iterator()
+        .asScala
+    }.map(_.map(p => withScheme(new Path(p.toUri))).toSeq.sortBy(_.toUri))
+  }
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)

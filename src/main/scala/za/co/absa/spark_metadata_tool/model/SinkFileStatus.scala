@@ -19,13 +19,13 @@ import org.apache.hadoop.fs.FileStatus
 
 object SinkFileStatus {
 
-  def from(status: FileStatus, action: Action): SinkFileStatus =
+  def from(status: FileStatus, action: String): SinkFileStatus =
     SinkFileStatus(
       status.getPath.toString,
       status.getLen,
       status.isDirectory,
       status.getModificationTime,
-      status.getReplication,
+      status.getReplication.toInt,
       status.getBlockSize,
       action
     )
