@@ -21,108 +21,126 @@ import org.scalamock.scalatest.MockFactory
 import org.scalatest.{EitherValues, OptionValues}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.IoError
 
-import java.util.UUID
+import java.io.IOException
 
 class DataToolSpec extends AnyFlatSpec with Matchers with OptionValues with EitherValues with MockFactory {
 
+  private val fileManager = mock[FileManager]
+
+  private val dataTool = new DataTool(fileManager)
+
+  private val baseDir = new Path("s://bucket/tmp/superheroes")
+
   "listDatafiles" should "list all data files in directory" in {
+    val expected = Seq(
+      new Path(baseDir, "part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+    )
+    (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(expected))
+
+    dataTool.listDataFiles(baseDir) should equal(Right(expected))
+  }
+
+  it should "list datafiles in partitioned by key" in {
+    val expected = Seq(
+      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+    )
+    (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(expected))
+
+    dataTool.listDataFiles(baseDir) should equal(Right(expected.sortBy(_.toUri)))
 
   }
 
-  it should "list only properly formatted files" in {
+  it should "fail when directory does not contain any data files" in {
+    (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(Seq[Path]()))
 
+    dataTool.listDataFiles(baseDir) should equal(Left(IoError(s"No data files found in $baseDir", None)))
   }
 
-  it should "list files in ascending order" in {
+  it should "fail on file system exception" in {
+    val exception = new IOException("io error")
+    (fileManager
+      .walkFiles(_: Path, _: Path => Boolean))
+      .expects(baseDir, *)
+      .returning(Left(IoError("io error", Some(exception))))
 
+    dataTool.listDataFiles(baseDir) should equal(Left(IoError("io error", Some(exception))))
   }
 
   "listDatafilesUpToPart" should "list only datafiles up to part number" in {
+    (fileManager
+      .walkFiles(_: Path, _: Path => Boolean))
+      .expects(baseDir, *)
+      .returning(
+        Right(
+          Seq(
+            new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet"),
+            new Path(baseDir, "gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Male/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
+            new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Unknown/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Unknown/part-00007-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          )
+        )
+      )
 
-  }
-
-  it should "list data files in ascending order" in {
-
-  }
-
-  it should "fail when some of required files are missing" in {
-
-  }
-
-  it should "fail when present with part duplicities" in {
-
-  }
-
-  "validateDataFiles" should "return Right(()) when correct sequence of datafiles is provided" in {
-    val basePath = new Path("s3://bucket/tmp/superheroes")
-    val dataFiles = Seq(
-      new Path(basePath, s"gender=Male/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Male/part-0001-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Male/part-0002-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0001-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=true/part-0000-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=false/part-0000-$swiftUUIDStr.parquet")
+    val maxPartNumber = 5
+    dataTool.listDataFilesUpToPart(baseDir, maxPartNumber) should equal(
+      Right(
+        Seq(
+          new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          new Path(baseDir, "gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          new Path(baseDir, "gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet")
+        )
+      )
     )
-    DataTool.validateDataFiles(dataFiles, basePath) should equal(Right(()))
+
   }
 
-  it should "return Right(()) for unpartitioned data" in {
-    val basePath = new Path("s3://bucket/tmp/superheroes")
-    val dataFiles = Seq(
-      new Path(basePath, s"part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"part-0001-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"part-0002-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"part-0003-$swiftUUIDStr.parquet")
+  "mkDataFileFilter" should "filter only valid data files" in {
+    val expected = Seq(
+      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet"),
+      new Path(baseDir, "gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Male/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
+      new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Unknown/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Unknown/part-00007-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(
+        baseDir,
+        "gender=Unknown/partition=valid/part-00012-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+      )
     )
-    DataTool.validateDataFiles(dataFiles, basePath) should equal(Right(()))
-  }
-
-  it should "fail when some part files are missing" in {
-    val basePath = new Path("s3://bucket/tmp/superheroes")
-    val dataFiles = Seq(
-      new Path(basePath, s"gender=Male/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Male/part-0001-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Male/part-0002-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0001-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=true/part-0001-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=false/part-0000-$swiftUUIDStr.parquet")
+    val junk = Seq(
+      new Path(baseDir, "invalid=data/with.parquet"),
+      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+      new Path(baseDir, "gender=Male/partition/invalid/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
+      new Path(baseDir, "gender=Unknown/_hidden"),
+      new Path(baseDir, ".hidden/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "_hidden/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, ".part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "_part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "_SUCCESS"),
+      new Path(baseDir, "._SUCCESS.crc")
     )
-    DataTool.validateDataFiles(dataFiles, basePath) should equal(Left(IoError("/gender=Unknown/strength_quantile_gt0.95=true missing part files: 0.", None)))
-  }
 
-  it should "fail when duplicities are introduced in data" in {
-    val basePath = new Path("s3://bucket/tmp/superheroes")
-    val dataFiles = Seq(
-      new Path(basePath, s"gender=Male/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Male/part-0001-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Male/part-0002-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0001-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=true/part-0000-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=false/part-0000-$swiftUUIDStr.parquet")
-    )
-    DataTool.validateDataFiles(dataFiles, basePath) should equal(Left(IoError("Detected duplicities in /gender=Female for part files: 0.", None)))
-  }
+    val isDataFile = DataTool.mkDataFileFilter(baseDir)
 
-  it should "fail when duplicities and missing files are in data" in {
-    val basePath = new Path("s3://bucket/tmp/superheroes")
-    val dataFiles = Seq(
-      new Path(basePath, s"gender=Male/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Male/part-0002-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Male/part-0002-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0000-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Female/part-0001-$swiftUUIDStr.snappy.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=true/part-0000-$swiftUUIDStr.parquet"),
-      new Path(basePath, s"gender=Unknown/strength_quantile_gt0.95=false/part-0000-$swiftUUIDStr.parquet")
-    )
-    DataTool.validateDataFiles(dataFiles, basePath) should equal(Left(IoError("/gender=Male missing part files: 1. Detected duplicities in /gender=Male for part files: 2.", None)))
+    (expected ++ junk).filter(isDataFile) should equal(expected)
   }
-
-  private def swiftUUIDStr: String =
-    UUID.randomUUID().toString
 }

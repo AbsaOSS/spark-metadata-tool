@@ -16,7 +16,7 @@
 
 package za.co.absa.spark_metadata_tool.io
 
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileStatus, Path}
 import org.scalamock.matchers.ArgCapture
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.EitherValues
@@ -25,15 +25,10 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{
-  CommonPrefix,
-  ListObjectsV2Request,
-  ListObjectsV2Response,
-  PutObjectRequest,
-  PutObjectResponse,
-  S3Object
-}
+import software.amazon.awssdk.services.s3.model.{CommonPrefix, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ListObjectsV2Response, NoSuchKeyException, PutObjectRequest, PutObjectResponse, S3Exception, S3Object}
+import za.co.absa.spark_metadata_tool.model.IoError
 
+import java.time.Instant
 import scala.io.Source
 import scala.util.Using
 
@@ -95,14 +90,14 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
     val putDirRequest = PutObjectRequest
       .builder()
       .bucket("bucket")
-      .key("path/to/root/child/")
+      .key("path/to/root/child")
       .build()
     val putDirResp = PutObjectResponse
       .builder()
       .build()
     (s3
       .putObject(_: PutObjectRequest, _: RequestBody))
-      .expects(putDirRequest, RequestBody.empty())
+      .expects(putDirRequest, *)
       .returning(putDirResp)
 
     val res = io.makeDir(dirPath)
@@ -111,15 +106,173 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
 
   }
 
-  it should "fail when prefix already exists" in {}
+  it should "fail when prefix already exists" in {
+    val rootPath = new Path("s3://bucket/path/to/root")
+    val dirPath  = new Path(rootPath, "child")
 
-  it should "fail when parent prefix does not exist" in {}
+    val expectedReq = ListObjectsV2Request
+      .builder()
+      .bucket("bucket")
+      .prefix(s"path/to/")
+      .delimiter("/")
+      .build()
+    val expectedResp = ListObjectsV2Response
+      .builder()
+      .prefix("path/to/")
+      .delimiter("/")
+      .commonPrefixes(
+        CommonPrefix.builder().prefix("path/to/dir").build(),
+        CommonPrefix.builder().prefix("path/to/root").build(),
+        CommonPrefix.builder().prefix("path/to/root/child").build(),
+        CommonPrefix.builder().prefix("path/to/root/dir1").build(),
+        CommonPrefix.builder().prefix("path/to/root/dir2").build()
+      )
+      .contents(S3Object.builder().key("path/to/root/file1").build())
+      .build()
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
 
-  it should "fail when creating prefix returns an error" in {}
+    val res = io.makeDir(dirPath)
 
-  "getFileStatus" should "return FileStatus for specified file" in {}
+    res should equal(Left(IoError("child: File exists", None)))
+  }
 
-  it should "fail when resource or prefix does not exist" in {}
+  it should "fail when parent prefix does not exist" in {
+    val rootPath = new Path("s3://bucket/path/to/root")
+    val dirPath  = new Path(rootPath, "child")
+
+    val expectedReq = ListObjectsV2Request
+      .builder()
+      .bucket("bucket")
+      .prefix(s"path/to/")
+      .delimiter("/")
+      .build()
+    val expectedResp = ListObjectsV2Response
+      .builder()
+      .prefix("path/to/")
+      .delimiter("/")
+      .commonPrefixes(
+        CommonPrefix.builder().prefix("path/to/dir").build(),
+        CommonPrefix.builder().prefix("path/to/other").build(),
+        CommonPrefix.builder().prefix("path/to/other/child").build(),
+        CommonPrefix.builder().prefix("path/to/other/dir1").build(),
+        CommonPrefix.builder().prefix("path/to/other/dir2").build()
+      )
+      .contents(S3Object.builder().key("path/to/other/file1").build())
+      .build()
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
+
+    val res = io.makeDir(dirPath)
+
+    res should equal(Left(IoError("s3://bucket/path/to/root: No such file or directory", None)))
+  }
+
+  it should "fail when creating prefix returns an error" in {
+    val rootPath = new Path("s3://bucket/path/to/root")
+    val dirPath  = new Path(rootPath, "child")
+
+    val expectedReq = ListObjectsV2Request
+      .builder()
+      .bucket("bucket")
+      .prefix(s"path/to/")
+      .delimiter("/")
+      .build()
+    (s3
+      .listObjectsV2(_: ListObjectsV2Request))
+      .expects(expectedReq)
+      .throwing(S3Exception.builder().message("s3 exception").build())
+
+    val res = io.makeDir(dirPath)
+
+    res should matchPattern { case Left(IoError("s3 exception", Some(_))) => }
+  }
+
+  "getFileStatus" should "return FileStatus for specified file" in {
+    val file    = new Path("s3://bucket/path/to/file.csv")
+    val modTime = Instant.parse("2022-12-25T12:31:54.962Z")
+    val bytes   = 123456L
+
+    val dirsRequest = ListObjectsV2Request
+      .builder()
+      .prefix("path/to/")
+      .bucket("bucket")
+      .delimiter("/")
+      .build()
+
+    val dirsResp = ListObjectsV2Response
+      .builder()
+      .delimiter("/")
+      .contents(S3Object.builder().key("file.csv").build())
+      .build()
+
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(dirsRequest).returning(dirsResp)
+
+    val expectedRequest = HeadObjectRequest
+      .builder()
+      .key("path/to/file.csv")
+      .bucket("bucket")
+      .build()
+
+    val expectedResponse = HeadObjectResponse
+      .builder()
+      .contentLength(bytes)
+      .contentType("text/csv")
+      .lastModified(modTime)
+      .build()
+
+    (s3.headObject(_: HeadObjectRequest)).expects(expectedRequest).returning(expectedResponse)
+
+    val res = io.getFileStatus(file)
+
+    res should equal(
+      Right(
+        new FileStatus(
+          bytes,
+          false,
+          1,
+          1,
+          modTime.toEpochMilli,
+          file
+        )
+      )
+    )
+  }
+
+  it should "fail when resource or prefix does not exist" in {
+    val file = new Path("s3://bucket/path/to/file.csv")
+
+    val dirsRequest = ListObjectsV2Request
+      .builder()
+      .prefix("path/to/")
+      .bucket("bucket")
+      .delimiter("/")
+      .build()
+
+    val dirsResp = ListObjectsV2Response
+      .builder()
+      .delimiter("/")
+      .contents(S3Object.builder().key("other.csv").build())
+      .build()
+
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(dirsRequest).returning(dirsResp)
+
+    val expectedRequest = HeadObjectRequest
+      .builder()
+      .key("path/to/file.csv")
+      .bucket("bucket")
+      .build()
+
+    (s3.headObject(_: HeadObjectRequest))
+      .expects(expectedRequest)
+      .throwing(NoSuchKeyException.builder().message("key does not exist").build())
+
+    io.getFileStatus(file) should matchPattern { case Left(IoError("key does not exist", Some(_))) => }
+  }
 
   it should "fail when s3 return error" in {}
+
+  "walkFiles" should "recursively list file tree in subdirectory" in {}
+
+  it should "keep only items filtered by provided path filter" in {}
+
+  it should "fail on s3 error" in {}
 }

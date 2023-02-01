@@ -27,7 +27,17 @@ import org.scalatest.OptionValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import za.co.absa.spark_metadata_tool.io.FileManager
-import za.co.absa.spark_metadata_tool.model.{FileLine, IoError, JsonLine, MetadataFile, MetadataRecord, NotFoundError, ParsingError, SinkFileStatus, StringLine}
+import za.co.absa.spark_metadata_tool.model.{
+  FileLine,
+  IoError,
+  JsonLine,
+  MetadataFile,
+  MetadataRecord,
+  NotFoundError,
+  ParsingError,
+  SinkFileStatus,
+  StringLine
+}
 import MetadataToolSpec._
 
 class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with EitherValues with MockFactory {
@@ -104,7 +114,8 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     val res = metadataTool.saveMetadataFiles(
       metadataPath,
-      Seq((0, fileStatus)),
+      -1,
+      Seq(fileStatus),
       dryRun = false
     )
 
@@ -153,14 +164,15 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
 
     val res = metadataTool.saveMetadataFiles(
       metadataPath,
-      Seq((0, zerothFileStatus), (1, firstFileStatus)),
+      compactionNum = -1,
+      Seq(zerothFileStatus, firstFileStatus),
       dryRun = false
     )
 
     res should equal(Right(()))
   }
 
-  it should "fail when at least on metadata file can not be written" in  {
+  it should "fail when at least on metadata file can not be written" in {
     val fileStatus = SinkFileStatus(
       path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
       size = 1234L,
@@ -175,7 +187,12 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     (fileManager.write _).expects(*, *).returning(Right(()))
     (fileManager.write _).expects(*, *).returning(Left(IoError("File already exists", None)))
 
-    val res = metadataTool.saveMetadataFiles(metadataPath, Seq((0, fileStatus), (1, fileStatus)), dryRun = false)
+    val res = metadataTool.saveMetadataFiles(
+      metadataPath,
+      compactionNum = 0,
+      metadata = Seq(fileStatus, fileStatus),
+      dryRun = false
+    )
 
     res should equal(Left(IoError("File already exists", None)))
   }
@@ -198,29 +215,29 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     )
     val metadataDir = new Path(s3BaseString, SparkMetadataDir)
 
-    (fileManager.write _).expects(
-      new Path(metadataDir, "2.compact"),
-      Seq(
-        "v1",
-        zerothFileStatus.asJson.noSpaces,
-        firstFileStatus.asJson.noSpaces,
-        secondFileStatus.asJson.noSpaces
+    (fileManager.write _)
+      .expects(
+        new Path(metadataDir, "2.compact"),
+        Seq(
+          "v1",
+          zerothFileStatus.asJson.noSpaces,
+          firstFileStatus.asJson.noSpaces,
+          secondFileStatus.asJson.noSpaces
+        )
       )
-    ).returning(Right(()))
+      .returning(Right(()))
 
     val res = metadataTool.saveCompactedMetadata(
       metadataDir,
-      metadata = 2,
-      lines = Seq(zerothFileStatus, firstFileStatus, secondFileStatus),
+      compactionNum = 2,
+      metadata = Seq(zerothFileStatus, firstFileStatus, secondFileStatus),
       dryRun = false
     )
 
     res should equal(Right(()))
   }
 
-  it should "fail on save metadata failure" in {
-
-  }
+  it should "fail on save metadata failure" in {}
 
   "fixPaths" should "replace old paths if no partition key was provided" in {
     val numLines = 10

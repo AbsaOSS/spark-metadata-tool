@@ -18,7 +18,12 @@ package za.co.absa.spark_metadata_tool
 
 object Compaction {
 
-  def lastCompaction(maxMicroBatchNumber: Long, compactionNumber: Int): Long =
-    maxMicroBatchNumber - (maxMicroBatchNumber % compactionNumber) - 1
+  def lastCompaction(maxMicroBatchNumber: Int, compactionNumber: Int): Option[Int] = {
+    if (maxMicroBatchNumber > compactionNumber - 1) {
+      Some(maxMicroBatchNumber - (maxMicroBatchNumber % compactionNumber) - 1)
+    } else {
+      None
+    }
+  }
 
 }

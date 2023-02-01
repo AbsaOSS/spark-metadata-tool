@@ -287,5 +287,60 @@ class HdfsFileManagerSpec
     res should matchPattern { case Left(IoError("hdfs error", Some(_))) => }
   }
 
+  "walkFiles" should "search all files in baseDir tree" in {
+    val expected = Seq(
+      new Path(testDataHdfsRootDir, "dir1/testFile1.txt"),
+      new Path(testDataHdfsRootDir, "dir1/testFile2.txt"),
+      new Path(testDataHdfsRootDir, "dir2/innerDir1/testFile1.txt")
+    )
+    hdfsFileManager.walkFiles(new Path(testDataHdfsRootDir), _ => true) should equal(Right(expected))
+  }
+
+  it should "pass only files matched by path filter" in {
+    val expected = Seq(
+      new Path(testDataHdfsRootDir, "dir1/testFile1.txt"),
+      new Path(testDataHdfsRootDir, "dir2/innerDir1/testFile1.txt")
+    )
+    val res = hdfsFileManager.walkFiles(new Path(testDataHdfsRootDir), _.getName == "testFile1.txt")
+
+    res should equal(Right(expected))
+  }
+
+  it should "should fail on io exception from RemoteIterator" in {
+    val parentPath = new Path("hdfs:///root/")
+    val dirPath    = new Path(parentPath, "new")
+    val fsMock = new FileSystem {
+
+      override def mkdirs(f: Path, permission: FsPermission): Boolean = ???
+      override def getFileStatus(f: Path): FileStatus                 = ???
+      override def getUri: URI                                        = ???
+      override def open(f: Path, bufferSize: Int): FSDataInputStream  = ???
+      override def create(
+        f: Path,
+        permission: FsPermission,
+        overwrite: Boolean,
+        bufferSize: Int,
+        replication: Short,
+        blockSize: Long,
+        progress: Progressable
+      ): FSDataOutputStream                                                                     = ???
+      override def append(f: Path, bufferSize: Int, progress: Progressable): FSDataOutputStream = ???
+      override def rename(src: Path, dst: Path): Boolean                                        = ???
+      override def delete(f: Path, recursive: Boolean): Boolean                                 = ???
+
+      override def listStatus(f: Path): Array[FileStatus] = {
+        throw new IOException("list status io exception")
+      }
+
+      override def setWorkingDirectory(new_dir: Path): Unit = ???
+      override def getWorkingDirectory: Path                = ???
+    }
+    val hdfsFileManager = HdfsFileManager(fsMock)
+
+    val res = hdfsFileManager.walkFiles(dirPath, _ => true)
+
+    res should matchPattern { case Left(IoError("list status io exception", Some(_))) => }
+  }
+
   private def removeRoot(path: Path, rootPrefix: String): String = path.toString.replace(rootPrefix, "")
 }

@@ -23,7 +23,18 @@ import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest}
+import software.amazon.awssdk.services.s3.model.{
+  CopyObjectRequest,
+  Delete,
+  DeleteObjectsRequest,
+  GetObjectRequest,
+  GetObjectResponse,
+  HeadObjectRequest,
+  HeadObjectResponse,
+  ListObjectsV2Request,
+  ObjectIdentifier,
+  PutObjectRequest
+}
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError}
 
@@ -102,28 +113,42 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
   override def makeDir(dir: Path): Either[IoError, Unit] = {
-    val parentDirName = dir.getParent.getName
-    val dirName = dir.getName
-    val s3Normalized = new Path(dir.getParent, dir.getName.stripSuffix("/") + "/")
+    val parentDir = dir.getParent
+    val dirName   = dir.getName
     for {
-      dirs         <- listDirectories(dir.getParent.getParent).map(_.filter(_.getParent.getName == parentDirName))
-      _            <- Either.cond(dirs.nonEmpty, (), IoError(s"${dir.getParent}: No such file or directory", None))
-      _            <- Either.cond(dirs.forall(_.getName != dirName), (), IoError(s"${dir.getName}: File exists", None))
-      _            <- putToDestination(s3Normalized, RequestBody.empty())
+      files <- listBucket(dir.getParent.getParent, All).map(_.filter(_.getParent == parentDir))
+      _     <- Either.cond(files.nonEmpty, (), IoError(s"${dir.getParent}: No such file or directory", None))
+      _     <- Either.cond(files.forall(_.getName != dirName), (), IoError(s"${dir.getName}: File exists", None))
+      _     <- putToDestination(dir, RequestBody.empty())
     } yield ()
   }
 
   override def getFileStatus(file: Path): Either[IoError, FileStatus] =
-    headObject(file).map(head =>
-      new FileStatus(
-        head.contentLength(),
-        head.contentType() == "application/x-directory",
-        1,
-        1,
-        head.lastModified().toEpochMilli,
-        file
-      )
-    )
+    listDirectories(file.getParent).flatMap { dirs =>
+      if (dirs.contains(file)) {
+        Right(
+          new FileStatus(
+            0,
+            true,
+            1,
+            1,
+            -1,
+            file
+          )
+        )
+      } else {
+        headObject(file).map(meta =>
+          new FileStatus(
+            meta.contentLength(),
+            false,
+            1,
+            1,
+            meta.lastModified().toEpochMilli,
+            file
+          )
+        )
+      }
+    }
 
   override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
     listFiles(baseDir).map(_.filter(filter)).map(_.sortBy(_.toUri))

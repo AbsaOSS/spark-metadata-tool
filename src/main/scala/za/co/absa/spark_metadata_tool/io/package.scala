@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package za.co.absa.spark_metadata_tool
 
 import za.co.absa.spark_metadata_tool.model.IoError
@@ -23,18 +24,4 @@ package object io {
 
   private[io] def catchAsIoError[R](resource: => R): Either[IoError, R] =
     Either.catchNonFatal(resource).leftMap(err => IoError(err.getMessage, err.some))
-
-  private[io] def falseAsError(err: => IoError)(res: Boolean): Either[IoError, Unit] =
-    if (res) {
-      Right(())
-    } else {
-      Left(err)
-    }
-
-  private[io] def trueAsError(err: => IoError)(res: Boolean): Either[IoError, Unit] =
-    if (res) {
-      Left(err)
-    } else {
-      Right(())
-    }
 }

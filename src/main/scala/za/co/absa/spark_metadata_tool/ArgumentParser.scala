@@ -95,13 +95,13 @@ object ArgumentParser {
       note(sys.props("line.separator")),
       cmd("create-metadata")
         .text("Create Spark metadata files for")
-        .action((_, c) => c.copy(mode = CreateMetadata(maxMicroBatchNumber = 0L, compactionNumber =  1)))
+        .action((_, c) => c.copy(mode = CreateMetadata(maxMicroBatchNumber = 0, compactionNumber =  1)))
         .children(
           opt[Path]('p', "path")
             .required()
             .action((x, c) => c.copy(path = x))
             .text("full path to data folder, including filesystem (e.g. s3://bucket/foo/root)"),
-          opt[Long]('m', "max-micro-batch-number")
+          opt[Int]('m', "max-micro-batch-number")
             .required()
             .action((x, c) => c.copy(mode = c.mode.asInstanceOf[CreateMetadata].copy(maxMicroBatchNumber = x)))
             .text("set max batch number"),

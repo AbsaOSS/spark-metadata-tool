@@ -23,6 +23,7 @@ import cats.implicits._
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 
 import java.io.PrintWriter
+import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.util.chaining._
 import scala.util.{Try, Using}
@@ -67,18 +68,28 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
 
   override def makeDir(dir: Path): Either[IoError, Unit] =
     for {
-      _ <- checkDirectoryExists(dir).flatMap(asError(IoError(s"${dir.getName}: File exists", None)))
-      _ <- checkDirectoryExists(dir.getParent)
-        .map(!_)
-        .flatMap(asError(IoError(s"${dir.getParent}: No such file or directory", None)))
-      _ <- catchAsIoError(hdfs.mkdirs(dir))
+      fileExists   <- checkDirectoryExists(dir)
+      _            <- Either.cond(!fileExists, (), IoError(s"${dir.getName}: File exists", None))
+      parentExists <- checkDirectoryExists(dir.getParent)
+      _            <- Either.cond(parentExists, (), IoError(s"${dir.getParent}: No such file or directory", None))
+      _            <- catchAsIoError(hdfs.mkdirs(dir))
     } yield ()
 
   override def getFileStatus(file: Path): Either[IoError, FileStatus] =
     catchAsIoError(hdfs.getFileStatus(file))
 
   override def walkFiles(basePath: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
-    catchAsIoError(hdfs.globStatus(basePath, (pth: Path) => filter(pth))).map(_.filter(_.isFile).map(_.getPath).toSeq)
+    catchAsIoError {
+      val ri     = hdfs.listFiles(basePath, true)
+      val buffer = new ArrayBuffer[Path]()
+      while (ri.hasNext) {
+        val fileStatus = ri.next()
+        if (filter(fileStatus.getPath)) {
+          buffer += fileStatus.getPath
+        }
+      }
+      buffer.sortInPlaceBy(_.toUri).toSeq
+    }
 
   private def listDirectory(path: Path): Either[IoError, Seq[Path]] =
     checkDirectoryExists(path) match {
@@ -96,11 +107,4 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
   private def checkDirectoryExists(directory: Path): Either[IoError, Boolean] = Try {
     hdfs.exists(directory) && hdfs.isDirectory(directory)
   }.fold(err => Left(IoError(err.getMessage, err.some)), res => Right(res))
-
-  private def asError(err: => IoError)(isError: Boolean): Either[IoError, Unit] =
-    if (isError) {
-      Left(err)
-    } else {
-      Right(())
-    }
 }
