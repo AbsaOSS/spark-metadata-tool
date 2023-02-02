@@ -23,7 +23,7 @@ import cats.implicits._
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 
 import java.io.PrintWriter
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 import scala.io.Source
 import scala.util.chaining._
 import scala.util.{Try, Using}
@@ -81,7 +81,7 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
   override def walkFiles(basePath: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
     catchAsIoError {
       val ri     = hdfs.listFiles(basePath, true)
-      val buffer = new ArrayBuffer[Path]()
+      val buffer = new mutable.ArrayBuffer[Path]()
       while (ri.hasNext) {
         val fileStatus = ri.next()
         if (filter(fileStatus.getPath)) {
@@ -89,7 +89,7 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
         }
       }
       buffer.sortInPlaceBy(_.toUri).toSeq
-    }
+    }.tap(_.logValueDebug(s"Contents of directory $basePath"))
 
   private def listDirectory(path: Path): Either[IoError, Seq[Path]] =
     checkDirectoryExists(path) match {

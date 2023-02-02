@@ -17,10 +17,12 @@
 package za.co.absa.spark_metadata_tool
 
 import org.apache.hadoop.fs.Path
+import org.log4s.Logger
+import za.co.absa.spark_metadata_tool.LoggingImplicits.EitherOps
 import za.co.absa.spark_metadata_tool.io.FileManager
 import za.co.absa.spark_metadata_tool.model.IoError
 
-import scala.util.matching.Regex
+import scala.util.chaining.scalaUtilChainingOps
 
 class DataTool(io: FileManager) {
   import za.co.absa.spark_metadata_tool.DataTool._
@@ -30,38 +32,20 @@ class DataTool(io: FileManager) {
 
   def listDataFiles(path: Path): Either[IoError, Seq[Path]] =
     for {
-      dataFiles <- io.walkFiles(path, mkDataFileFilter(path)).map(_.sortBy(_.toUri))
-      _         <- Either.cond(dataFiles.nonEmpty, (), IoError(s"No data files found in $path", None))
+      dataFiles <- io.walkFiles(path, dataFileFilter)
+                     .tap(_.logValueDebug("Listing data"))
+      _ <- Either.cond(dataFiles.nonEmpty, (), IoError(s"No data files found in $path", None))
     } yield dataFiles
 }
 
 object DataTool {
+  private implicit val logger: Logger = org.log4s.getLogger
 
-  private[spark_metadata_tool] def mkDataFileFilter(basePath: Path): Path => Boolean = {
-    val isDataFile = mkPartitionedFileFilter(basePath)
-    (filePath: Path) => isVisible(filePath) && isDataFile(filePath)
-  }
+  private[spark_metadata_tool] def dataFileFilter(filePath: Path): Boolean =
+    filePath.toUri.getPath.endsWith(".parquet") && isVisible(filePath)
+
   private def isVisible(filePath: Path): Boolean =
-    !hiddenRe.matches(filePath.toString)
+    !hiddenRe.pattern.matcher(filePath.toUri.getPath).find()
 
-  private val hiddenRe = "^_|^\\.|/_|/\\.".r
-
-  private def mkPartitionedFileFilter(basePath: Path): Path => Boolean = {
-    val partFilter = mkDataFileRe(basePath)
-    (filePath: Path) => partFilter.matches(filePath.toString)
-  }
-
-  private def mkDataFileRe(basePath: Path): Regex =
-    new Regex(s"${Regex.quote(basePath.toString)}$partitionRe/$dataFileRe")
-
-  private val partitionRe = "(?:/[a-zA-Z0-9_.+-]+=[a-zA-Z0-9_.+-]+)*"  // partitioning e.g. gender=Male
-
-  private val dataFileRe: String = "part-\\d{5,}-" + // Part number
-    "[0-9a-fA-F]{8}-" + // first 8 characters of uuid
-    "[0-9a-fA-F]{4}-" + // 4 characters of uuid separated by -
-    "[0-9a-fA-F]{4}-" +
-    "[0-9a-fA-F]{4}-" +
-    "[0-9a-fA-F]{12}" +        // last 12 hexadecimal characters of uuid
-    "(?:[.-]c[0-9]{3,})?" +    // merged file counter .c000 or -c000
-    "(?:\\.snappy)?\\.parquet" // extension, that may not be compressed by snappy
+  private val hiddenRe = "/[_.]".r
 }

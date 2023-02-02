@@ -32,35 +32,25 @@ class DataToolSpec extends AnyFlatSpec with Matchers with OptionValues with Eith
 
   private val dataTool = new DataTool(fileManager)
 
-  private val baseDir = new Path("s://bucket/tmp/superheroes")
+  private val baseDir = new Path("s3:///bucket/tmp/superheroes")
 
-  "listDatafiles" should "list all data files in directory" in {
+  "listDatafiles" should "list all data files in directory tree" in {
     val expected = Seq(
       new Path(baseDir, "part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+      new Path(baseDir, "gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
     )
     (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(expected))
 
     dataTool.listDataFiles(baseDir) should equal(Right(expected))
   }
 
-  it should "list datafiles in partitioned by key" in {
-    val expected = Seq(
-      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-    )
-    (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(expected))
-
-    dataTool.listDataFiles(baseDir) should equal(Right(expected.sortBy(_.toUri)))
-
-  }
-
-  it should "fail when directory does not contain any data files" in {
-    (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(Seq[Path]()))
+  it should "fail when no data files are found" in {
+    (fileManager.walkFiles(_: Path, _: Path => Boolean)).expects(baseDir, *).returning(Right(Seq()))
 
     dataTool.listDataFiles(baseDir) should equal(Left(IoError(s"No data files found in $baseDir", None)))
+
   }
 
   it should "fail on file system exception" in {
@@ -73,20 +63,20 @@ class DataToolSpec extends AnyFlatSpec with Matchers with OptionValues with Eith
     dataTool.listDataFiles(baseDir) should equal(Left(IoError("io error", Some(exception))))
   }
 
-  "listDatafilesUpToPart" should "list only datafiles up to part number" in {
+  "listDatafilesUpToPart" should "takes only first 5 files" in {
     (fileManager
       .walkFiles(_: Path, _: Path => Boolean))
       .expects(baseDir, *)
       .returning(
         Right(
           Seq(
+            new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+            new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
             new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
             new Path(baseDir, "gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet"),
             new Path(baseDir, "gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
             new Path(baseDir, "gender=Male/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
-            new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            new Path(baseDir, "gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
             new Path(baseDir, "gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
             new Path(baseDir, "gender=Unknown/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
             new Path(baseDir, "gender=Unknown/part-00007-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
@@ -106,41 +96,28 @@ class DataToolSpec extends AnyFlatSpec with Matchers with OptionValues with Eith
         )
       )
     )
-
   }
 
-  "mkDataFileFilter" should "filter only valid data files" in {
+  "dataFileFilter" should "filter only visible parquet files" in {
     val expected = Seq(
-      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet"),
-      new Path(baseDir, "gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Male/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
+      new Path(baseDir, "part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
       new Path(baseDir, "gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Unknown/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "gender=Unknown/part-00007-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(
-        baseDir,
-        "gender=Unknown/partition=valid/part-00012-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-      )
+      new Path(baseDir, "gender=Female/subdir/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "subdir/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
     )
-    val junk = Seq(
-      new Path(baseDir, "invalid=data/with.parquet"),
-      new Path(baseDir, "gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
-      new Path(baseDir, "gender=Male/partition/invalid/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
-      new Path(baseDir, "gender=Unknown/_hidden"),
-      new Path(baseDir, ".hidden/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "_hidden/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, ".part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-      new Path(baseDir, "_part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+    val invalid = Seq(
       new Path(baseDir, "_SUCCESS"),
-      new Path(baseDir, "._SUCCESS.crc")
+      new Path(baseDir, "._SUCCESS"),
+      new Path(baseDir, "_SUCCESS.crc"),
+      new Path(baseDir, "part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+      new Path(baseDir, "gender=Male/_part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet"),
+      new Path(baseDir, "gender=Male/.part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "_gender=Male/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
+      new Path(baseDir, ".gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+      new Path(baseDir, "hidden/_subdir/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
     )
 
-    val isDataFile = DataTool.mkDataFileFilter(baseDir)
-
-    (expected ++ junk).filter(isDataFile) should equal(expected)
+    (expected ++ invalid).filter(DataTool.dataFileFilter) should equal(expected)
   }
 }

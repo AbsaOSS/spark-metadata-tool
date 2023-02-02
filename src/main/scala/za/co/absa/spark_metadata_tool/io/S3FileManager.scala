@@ -107,10 +107,10 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     } yield ()
 
   override def listDirectories(path: Path): Either[IoError, Seq[Path]] =
-    listBucket(path, Directory).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
+    listBucket(path, Directory).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
 
   override def listFiles(path: Path): Either[IoError, Seq[Path]] =
-    listBucket(path, File).tap(_.logValueDebug(s"Listed directories in ${path.toString}"))
+    listBucket(path, File).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
 
   override def makeDir(dir: Path): Either[IoError, Unit] = {
     val parentDir = dir.getParent
@@ -151,7 +151,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     }
 
   override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
-    listFiles(baseDir).map(_.filter(filter)).map(_.sortBy(_.toUri))
+    listFiles(baseDir).map(_.filter(filter)).tap(_.logValueDebug(s"Contents of directory $baseDir"))
 
   private def headObject(file: Path): Either[IoError, HeadObjectResponse] = {
     val bucket = getBucket(file)
