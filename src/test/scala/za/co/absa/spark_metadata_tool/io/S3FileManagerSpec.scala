@@ -25,7 +25,18 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{CommonPrefix, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ListObjectsV2Response, NoSuchKeyException, PutObjectRequest, PutObjectResponse, S3Exception, S3Object}
+import software.amazon.awssdk.services.s3.model.{
+  CommonPrefix,
+  HeadObjectRequest,
+  HeadObjectResponse,
+  ListObjectsV2Request,
+  ListObjectsV2Response,
+  NoSuchKeyException,
+  PutObjectRequest,
+  PutObjectResponse,
+  S3Exception,
+  S3Object
+}
 import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.time.Instant
@@ -261,18 +272,224 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
       .bucket("bucket")
       .build()
 
-    (s3.headObject(_: HeadObjectRequest))
+    (s3
+      .headObject(_: HeadObjectRequest))
       .expects(expectedRequest)
       .throwing(NoSuchKeyException.builder().message("key does not exist").build())
 
     io.getFileStatus(file) should matchPattern { case Left(IoError("key does not exist", Some(_))) => }
   }
 
-  it should "fail when s3 return error" in {}
+  it should "fail when s3 return error" in {
+    val file = new Path("s3://bucket/path/to/file.csv")
 
-  "walkFiles" should "recursively list file tree in subdirectory" in {}
+    val dirsRequest = ListObjectsV2Request
+      .builder()
+      .prefix("path/to/")
+      .bucket("bucket")
+      .delimiter("/")
+      .build()
 
-  it should "keep only items filtered by provided path filter" in {}
+    val error = S3Exception.builder().message("s3 exception").build()
 
-  it should "fail on s3 error" in {}
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(dirsRequest).throwing(error)
+
+    io.getFileStatus(file) should matchPattern { case Left(IoError("s3 exception", Some(`error`))) => }
+  }
+
+  "walkFiles" should "recursively list file tree in subdirectory" in {
+    val rootDir = new Path("s3://bucket/path/to/root")
+
+    val listRequest = ListObjectsV2Request
+      .builder()
+      .prefix("path/to/root/")
+      .bucket("bucket")
+      .delimiter("/")
+      .build()
+
+    val listResponse = ListObjectsV2Response
+      .builder()
+      .prefix("path/to/root")
+      .delimiter("/")
+      .commonPrefixes(
+        CommonPrefix.builder().prefix("gender=Male").build(),
+        CommonPrefix.builder().prefix("gender=Female").build(),
+        CommonPrefix.builder().prefix("gender=Unknown").build()
+      )
+      .contents(
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build()
+      )
+      .build()
+
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(listRequest).returning(listResponse)
+
+    io.walkFiles(rootDir, _ => true) should equal(
+      Right(
+        Seq(
+          new Path(
+            "s3://bucket/path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          )
+        )
+      )
+    )
+  }
+
+  it should "apply filter on returned files" in {
+    val rootDir = new Path("s3://bucket/path/to/root")
+
+    val listRequest = ListObjectsV2Request
+      .builder()
+      .prefix("path/to/root/")
+      .bucket("bucket")
+      .delimiter("/")
+      .build()
+
+    val listResponse = ListObjectsV2Response
+      .builder()
+      .prefix("path/to/root")
+      .delimiter("/")
+      .commonPrefixes(
+        CommonPrefix.builder().prefix("gender=Male").build(),
+        CommonPrefix.builder().prefix("gender=Female").build(),
+        CommonPrefix.builder().prefix("gender=Unknown").build()
+      )
+      .contents(
+        S3Object
+          .builder()
+          .key("path/to/root/_SUCCESS")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
+          .build(),
+        S3Object
+          .builder()
+          .key("path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
+          .build()
+      )
+      .build()
+
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(listRequest).returning(listResponse)
+
+    io.walkFiles(rootDir, _.getName.endsWith("parquet")) should equal(
+      Right(
+        Seq(
+          new Path(
+            "s3://bucket/path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          ),
+          new Path(
+            "s3://bucket/path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
+          )
+        )
+      )
+    )
+
+  }
+
+  it should "fail on s3 error" in {
+    val rootDir = new Path("s3://bucket/path/to/root")
+
+    val listRequest = ListObjectsV2Request
+      .builder()
+      .prefix("path/to/root/")
+      .bucket("bucket")
+      .delimiter("/")
+      .build()
+
+    val error = S3Exception.builder().message("s3 error").build()
+
+    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(listRequest).throwing(error)
+
+    io.walkFiles(rootDir, _ => true) should equal(Left(IoError("s3 error", Some(error))))
+  }
 }
