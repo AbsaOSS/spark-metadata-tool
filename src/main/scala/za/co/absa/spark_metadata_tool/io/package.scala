@@ -19,11 +19,10 @@ package za.co.absa.spark_metadata_tool
 import za.co.absa.spark_metadata_tool.model.IoError
 import cats.syntax.either._
 import cats.syntax.option._
-import shapeless.Default
 
 package object io {
-  private[io] val DefaultBlockSize = 64 * 1024 * 1024
-  private[io] val DefaultBlockReplication = 1
+  private[io] val DefaultBlockSize: Long = 64 * 1024 * 1024
+  private[io] val DefaultBlockReplication: Int = 1
 
   private[io] def catchAsIoError[R](resource: => R): Either[IoError, R] =
     Either.catchNonFatal(resource).leftMap(err => IoError(err.getMessage, err.some))
