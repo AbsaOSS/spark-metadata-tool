@@ -85,8 +85,8 @@ case object UnixFileManager extends FileManager {
     } yield new FileStatus(
       size,
       isDir,
-      1,
-      1,
+      DefaultBlockReplication,
+      DefaultBlockSize,
       modificationTime,
       new Path(toUriWithScheme(file))
     )

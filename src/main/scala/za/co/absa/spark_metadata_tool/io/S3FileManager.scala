@@ -23,18 +23,7 @@ import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{
-  CopyObjectRequest,
-  Delete,
-  DeleteObjectsRequest,
-  GetObjectRequest,
-  GetObjectResponse,
-  HeadObjectRequest,
-  HeadObjectResponse,
-  ListObjectsV2Request,
-  ObjectIdentifier,
-  PutObjectRequest
-}
+import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest}
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError}
 
@@ -130,8 +119,8 @@ case class S3FileManager(s3: S3Client) extends FileManager {
           new FileStatus(
             0,
             true,
-            1,
-            1,
+            DefaultBlockReplication,
+            DefaultBlockSize,
             -1,
             file
           )
@@ -141,8 +130,8 @@ case class S3FileManager(s3: S3Client) extends FileManager {
           new FileStatus(
             meta.contentLength(),
             false,
-            1,
-            1,
+            DefaultBlockReplication,
+            DefaultBlockSize,
             meta.lastModified().toEpochMilli,
             file
           )
