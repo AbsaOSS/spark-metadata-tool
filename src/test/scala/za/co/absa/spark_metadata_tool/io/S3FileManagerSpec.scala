@@ -25,11 +25,19 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{CommonPrefix, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ListObjectsV2Response, NoSuchKeyException, PutObjectRequest, PutObjectResponse, S3Exception, S3Object}
+import software.amazon.awssdk.services.s3.model.{
+  CommonPrefix,
+  ListObjectsV2Request,
+  ListObjectsV2Response,
+  PutObjectRequest,
+  PutObjectResponse,
+  S3Exception,
+  S3Object
+}
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable
 import za.co.absa.spark_metadata_tool.model.IoError
 
-import java.time.Instant
+import java.time.{Duration, Instant}
 import scala.io.Source
 import scala.util.Using
 
@@ -38,6 +46,8 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
   private val s3 = mock[S3Client]
 
   private val io = S3FileManager(s3)
+
+  private val TMinus10 = Instant.now().minus(Duration.ofMinutes(10))
 
   "Write" should "correctly serialize file contents to bytes" in {
 
@@ -83,7 +93,7 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
         CommonPrefix.builder().prefix("path/to/root/dir1").build(),
         CommonPrefix.builder().prefix("path/to/root/dir2").build()
       )
-      .contents(S3Object.builder().key("path/to/root/file1").build())
+      .contents(mkS3Obj("file1"))
       .build()
     (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
 
@@ -113,7 +123,7 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
         CommonPrefix.builder().prefix("path/to/root/dir1/").build(),
         CommonPrefix.builder().prefix("path/to/root/dir2/").build()
       )
-      .contents(S3Object.builder().key("path/to/root/file1").build())
+      .contents(mkS3Obj("file1"))
       .build()
     (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
 
@@ -144,107 +154,7 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
     res should equal(Left(IoError("s3://bucket/path/to/root: No such file or directory", None)))
   }
 
-  "getFileStatus" should "return FileStatus for specified file" in {
-    val file    = new Path("s3://bucket/path/to/file.csv")
-    val modTime = Instant.parse("2022-12-25T12:31:54.962Z")
-    val bytes   = 123456L
-
-    val dirsRequest = ListObjectsV2Request
-      .builder()
-      .prefix("path/to/")
-      .bucket("bucket")
-      .delimiter("/")
-      .build()
-
-    val dirsResp = ListObjectsV2Response
-      .builder()
-      .delimiter("/")
-      .contents(S3Object.builder().key("file.csv").build())
-      .build()
-
-    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(dirsRequest).returning(dirsResp)
-
-    val expectedRequest = HeadObjectRequest
-      .builder()
-      .key("path/to/file.csv")
-      .bucket("bucket")
-      .build()
-
-    val expectedResponse = HeadObjectResponse
-      .builder()
-      .contentLength(bytes)
-      .contentType("text/csv")
-      .lastModified(modTime)
-      .build()
-
-    (s3.headObject(_: HeadObjectRequest)).expects(expectedRequest).returning(expectedResponse)
-
-    val res = io.getFileStatus(file)
-
-    res should equal(
-      Right(
-        new FileStatus(
-          bytes,
-          false,
-          1,
-          1,
-          modTime.toEpochMilli,
-          file
-        )
-      )
-    )
-  }
-
-  it should "fail when resource or prefix does not exist" in {
-    val file = new Path("s3://bucket/path/to/file.csv")
-
-    val dirsRequest = ListObjectsV2Request
-      .builder()
-      .prefix("path/to/")
-      .bucket("bucket")
-      .delimiter("/")
-      .build()
-
-    val dirsResp = ListObjectsV2Response
-      .builder()
-      .delimiter("/")
-      .contents(S3Object.builder().key("other.csv").build())
-      .build()
-
-    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(dirsRequest).returning(dirsResp)
-
-    val expectedRequest = HeadObjectRequest
-      .builder()
-      .key("path/to/file.csv")
-      .bucket("bucket")
-      .build()
-
-    (s3
-      .headObject(_: HeadObjectRequest))
-      .expects(expectedRequest)
-      .throwing(NoSuchKeyException.builder().message("key does not exist").build())
-
-    io.getFileStatus(file) should matchPattern { case Left(IoError("key does not exist", Some(_))) => }
-  }
-
-  it should "fail when s3 return error" in {
-    val file = new Path("s3://bucket/path/to/file.csv")
-
-    val dirsRequest = ListObjectsV2Request
-      .builder()
-      .prefix("path/to/")
-      .bucket("bucket")
-      .delimiter("/")
-      .build()
-
-    val error = S3Exception.builder().message("s3 exception").build()
-
-    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(dirsRequest).throwing(error)
-
-    io.getFileStatus(file) should matchPattern { case Left(IoError("s3 exception", Some(`error`))) => }
-  }
-
-  "walkFiles" should "recursively list file tree in subdirectory" in {
+  "walkFileStatuses" should "recursively list file tree in subdirectory" in {
     val rootDir = new Path("s3://bucket/path/to/root")
 
     val listRequest = ListObjectsV2Request
@@ -255,69 +165,41 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
 
     val listResponse = ListObjectsV2Response
       .builder()
-      .prefix("path/to/root")
+      .prefix("path/to/root/")
       .commonPrefixes(
-        CommonPrefix.builder().prefix("gender=Male").build(),
-        CommonPrefix.builder().prefix("gender=Female").build(),
-        CommonPrefix.builder().prefix("gender=Unknown").build()
+        CommonPrefix.builder().prefix("path/to/root/gender=Male").build(),
+        CommonPrefix.builder().prefix("path/to/root/gender=Female").build(),
+        CommonPrefix.builder().prefix("path/to/root/gender=Unknown").build()
       )
       .contents(
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build()
+        mkS3Obj("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
       )
       .build()
 
-    (s3.listObjectsV2Paginator(_: ListObjectsV2Request))
+    (s3
+      .listObjectsV2Paginator(_: ListObjectsV2Request))
       .expects(listRequest)
       .returning(new ListObjectsV2Iterable(s3, listRequest))
 
-    (s3.listObjectsV2(_: ListObjectsV2Request))
+    (s3
+      .listObjectsV2(_: ListObjectsV2Request))
       .expects(listRequest)
       .returning(listResponse)
 
-    io.walkFiles(rootDir, _ => true) should equal(
+    io.walkFileStatuses(rootDir, _ => true) should equal(
       Right(
         Seq(
-          new Path(
-            "s3://bucket/path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          )
+          mkFileStatus("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
         )
       )
     )
@@ -341,90 +223,41 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
         CommonPrefix.builder().prefix("gender=Unknown").build()
       )
       .contents(
-        S3Object
-          .builder()
-          .key("path/to/root/_SUCCESS")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          .build(),
-        S3Object
-          .builder()
-          .key("path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
-          .build()
+        mkS3Obj("_SUCCESS", size = 0),
+        mkS3Obj("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+        mkS3Obj("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+        mkS3Obj("gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+        mkS3Obj("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+        mkS3Obj("gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc"),
+        mkS3Obj("gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+        mkS3Obj("gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet.crc")
       )
       .build()
 
-    (s3.listObjectsV2Paginator(_: ListObjectsV2Request))
+    (s3
+      .listObjectsV2Paginator(_: ListObjectsV2Request))
       .expects(listRequest)
       .returning(new ListObjectsV2Iterable(s3, listRequest))
 
-    (s3.listObjectsV2(_: ListObjectsV2Request))
+    (s3
+      .listObjectsV2(_: ListObjectsV2Request))
       .expects(listRequest)
       .returning(listResponse)
 
-    io.walkFiles(rootDir, _.getName.endsWith("parquet")) should equal(
+    io.walkFileStatuses(rootDir, _.getName.endsWith("parquet")) should equal(
       Right(
         Seq(
-          new Path(
-            "s3://bucket/path/to/root/gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          ),
-          new Path(
-            "s3://bucket/path/to/root/gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"
-          )
+          mkFileStatus("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Female/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
+          mkFileStatus("gender=Unknown/part-00004-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
         )
       )
     )
@@ -444,6 +277,30 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
 
     (s3.listObjectsV2Paginator(_: ListObjectsV2Request)).expects(listRequest).throwing(error)
 
-    io.walkFiles(rootDir, _ => true) should equal(Left(IoError("s3 error", Some(error))))
+    io.walkFileStatuses(rootDir, _ => true) should equal(Left(IoError("s3 error", Some(error))))
   }
+
+  def mkS3Obj(
+    key: String,
+    size: Long = 512,
+    lastModified: Instant = TMinus10,
+    prefix: String = "path/to/root/"
+  ): S3Object =
+    S3Object.builder().key(s"$prefix$key").lastModified(lastModified).size(size).build()
+
+  def mkFileStatus(
+    key: String,
+    size: Long = 512,
+    lastModified: Instant = TMinus10,
+    bucked: String = "bucket",
+    prefix: String = "path/to/root/"
+  ): FileStatus =
+    new FileStatus(
+      size,
+      false,
+      DefaultBlockReplication,
+      DefaultBlockSize,
+      lastModified.toEpochMilli,
+      new Path(s"s3://$bucked/$prefix$key")
+    )
 }

@@ -25,7 +25,6 @@ import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
 import za.co.absa.spark_metadata_tool.model.{
-  Action,
   AppConfig,
   AppError,
   AppErrorWithThrowable,
@@ -162,15 +161,11 @@ object Application extends App {
     val metadataDir = new Path(config.path, SparkMetadataDir)
     for {
       _         <- io.makeDir(metadataDir)
-      dataFiles <- dataTool.listDataFilesUpToPart(config.path, createMetadata.maxMicroBatchNumber)
-      statuses <- dataFiles
-                    .map(df => io.getFileStatus(df))
-                    .sequence
-                    .map(_.map(status => SinkFileStatus.from(status, Action.Add)))
+      statuses <- dataTool.listStatusesUpToPart(config.path, createMetadata.maxMicroBatchNumber)
       _ <- tool.saveMetadata(
              metadataDir,
              Compaction.lastCompaction(createMetadata.maxMicroBatchNumber, createMetadata.compactionNumber),
-             statuses,
+             statuses.map(SinkFileStatus.asAddStatus),
              config.dryRun
            )
     } yield ()

@@ -26,7 +26,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
 import java.net.URI
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Paths, Path => JPath}
 import scala.io.Source
 import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
@@ -76,11 +76,16 @@ case object UnixFileManager extends FileManager {
     paths.foreach(p => Files.delete(Paths.get(toUriWithScheme(p))))
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
-  override def getFileStatus(file: Path): Either[IoError, FileStatus] =
+  override def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]] =
     for {
-      path             <- catchAsIoError(Paths.get(toUriWithScheme(file)))
-      size             <- catchAsIoError(Files.size(path))
-      isDir            <- catchAsIoError(Files.isDirectory(path))
+      it <- catchAsIoError(Files.walk(Paths.get(toUriWithScheme(baseDir))).iterator().asScala)
+      statuses <- it.map(getFileStatus).toSeq.sequence
+    } yield statuses
+
+  private def getFileStatus(path: JPath): Either[IoError, FileStatus] =
+    for {
+      size <- catchAsIoError(Files.size(path))
+      isDir <- catchAsIoError(Files.isDirectory(path))
       modificationTime <- catchAsIoError(Files.getLastModifiedTime(path)).map(_.toMillis)
     } yield new FileStatus(
       size,
@@ -88,18 +93,8 @@ case object UnixFileManager extends FileManager {
       DefaultBlockReplication,
       DefaultBlockSize,
       modificationTime,
-      new Path(toUriWithScheme(file))
+      new Path(path.toUri)
     )
-
-  override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
-    catchAsIoError {
-      Files
-        .walk(Paths.get(toUriWithScheme(baseDir)))
-        .iterator()
-        .asScala
-        .map(p => new Path(p.toUri))
-        .filter(filter)
-    }.map(_.toSeq.sortBy(_.toUri)).tap(_.logValueDebug(s"Contents of directory $baseDir"))
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)

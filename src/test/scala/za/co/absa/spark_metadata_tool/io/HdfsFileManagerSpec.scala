@@ -287,13 +287,16 @@ class HdfsFileManagerSpec
     res should matchPattern { case Left(IoError("hdfs error", Some(_))) => }
   }
 
-  "walkFiles" should "search all files in baseDir tree" in {
+  "walkFileStatuses" should "search all files in baseDir tree" in {
     val expected = Seq(
       new Path(testDataHdfsRootDir, "dir1/testFile1.txt"),
       new Path(testDataHdfsRootDir, "dir1/testFile2.txt"),
       new Path(testDataHdfsRootDir, "dir2/innerDir1/testFile1.txt")
     )
-    hdfsFileManager.walkFiles(new Path(testDataHdfsRootDir), _ => true) should equal(Right(expected))
+    val paths = hdfsFileManager
+      .walkFileStatuses(new Path(testDataHdfsRootDir), _ => true)
+      .map(_.map(_.getPath))
+    paths should equal(Right(expected))
   }
 
   it should "pass only files matched by path filter" in {
@@ -301,9 +304,11 @@ class HdfsFileManagerSpec
       new Path(testDataHdfsRootDir, "dir1/testFile1.txt"),
       new Path(testDataHdfsRootDir, "dir2/innerDir1/testFile1.txt")
     )
-    val res = hdfsFileManager.walkFiles(new Path(testDataHdfsRootDir), _.getName == "testFile1.txt")
+    val paths = hdfsFileManager
+      .walkFileStatuses(new Path(testDataHdfsRootDir), _.getName == "testFile1.txt")
+      .map(_.map(_.getPath))
 
-    res should equal(Right(expected))
+    paths should equal(Right(expected))
   }
 
   it should "should fail on io exception from RemoteIterator" in {
@@ -337,7 +342,7 @@ class HdfsFileManagerSpec
     }
     val hdfsFileManager = HdfsFileManager(fsMock)
 
-    val res = hdfsFileManager.walkFiles(dirPath, _ => true)
+    val res = hdfsFileManager.walkFileStatuses(dirPath, _ => true)
 
     res should matchPattern { case Left(IoError("list status io exception", Some(_))) => }
   }

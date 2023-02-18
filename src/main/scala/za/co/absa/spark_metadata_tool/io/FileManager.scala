@@ -27,6 +27,5 @@ trait FileManager {
   def copy(from: Path, to: Path): Either[IoError, Unit]
   def delete(paths: Seq[Path]): Either[IoError, Unit]
   def makeDir(dir: Path): Either[IoError, Unit]
-  def getFileStatus(file: Path): Either[IoError, FileStatus]
-  def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]]
+  def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]]
 }

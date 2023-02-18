@@ -30,11 +30,10 @@ import software.amazon.awssdk.services.s3.model.{
   DeleteObjectsRequest,
   GetObjectRequest,
   GetObjectResponse,
-  HeadObjectRequest,
-  HeadObjectResponse,
   ListObjectsV2Request,
   ObjectIdentifier,
-  PutObjectRequest
+  PutObjectRequest,
+  S3Object
 }
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError}
@@ -121,34 +120,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       _   <- Either.cond(notContainDir(fls, dir), (), IoError(s"${dir.getName}: File exists", None))
     } yield ()
 
-  override def getFileStatus(file: Path): Either[IoError, FileStatus] =
-    listDirectories(file.getParent).flatMap { dirs =>
-      if (dirs.contains(file)) {
-        Right(
-          new FileStatus(
-            0,
-            true,
-            DefaultBlockReplication,
-            DefaultBlockSize,
-            -1,
-            file
-          )
-        )
-      } else {
-        headObject(file).map(meta =>
-          new FileStatus(
-            meta.contentLength(),
-            false,
-            DefaultBlockReplication,
-            DefaultBlockSize,
-            meta.lastModified().toEpochMilli,
-            file
-          )
-        )
-      }
-    }
-
-  override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] = {
+  override def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]] = {
     val bucket = getBucket(baseDir)
     val prefix = ensureTrailingSlash(getKey(baseDir))
 
@@ -158,24 +130,11 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
     catchAsIoError {
       for {
-        page <- s3.listObjectsV2Paginator(request).iterator().asScala
-        obj  <- page.contents().asScala
-        pth  <- Some(new Path(builder.setPath(obj.key()).build())).filter(filter)
-      } yield pth
+        page   <- s3.listObjectsV2Paginator(request).iterator().asScala
+        obj    <- page.contents().asScala
+        status <- Some(new Path(builder.setPath(obj.key()).build())).filter(filter).map(asFileStatus(obj))
+      } yield status
     }.map(_.toSeq)
-  }
-
-  private def headObject(file: Path): Either[IoError, HeadObjectResponse] = {
-    val bucket = getBucket(file)
-    val key    = getKey(file)
-
-    val request = HeadObjectRequest
-      .builder()
-      .bucket(bucket)
-      .key(key)
-      .build()
-
-    catchAsIoError(s3.headObject(request))
   }
 
   private def putToDestination(path: Path, body: RequestBody): Either[IoError, Unit] = {
@@ -251,4 +210,14 @@ object S3FileManager {
     case '/' => path
     case _   => path :+ '/'
   }
+
+  private def asFileStatus(s3Object: S3Object)(path: Path): FileStatus =
+    new FileStatus(
+      s3Object.size(),
+      false,
+      DefaultBlockReplication,
+      DefaultBlockSize,
+      s3Object.lastModified().toEpochMilli,
+      path
+    )
 }

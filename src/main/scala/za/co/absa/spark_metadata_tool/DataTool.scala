@@ -16,7 +16,7 @@
 
 package za.co.absa.spark_metadata_tool
 
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileStatus, Path}
 import org.log4s.Logger
 import za.co.absa.spark_metadata_tool.LoggingImplicits.EitherOps
 import za.co.absa.spark_metadata_tool.io.FileManager
@@ -27,15 +27,14 @@ import scala.util.chaining.scalaUtilChainingOps
 class DataTool(io: FileManager) {
   import za.co.absa.spark_metadata_tool.DataTool._
 
-  def listDataFilesUpToPart(path: Path, maxPartNumber: Int): Either[IoError, Seq[Path]] =
-    listDataFiles(path).map(_.take(maxPartNumber))
+  def listStatusesUpToPart(path: Path, maxPartNumber: Int): Either[IoError, Seq[FileStatus]] =
+    listDataFileStatuses(path).map(_.take(maxPartNumber))
 
-  def listDataFiles(path: Path): Either[IoError, Seq[Path]] =
+  def listDataFileStatuses(path: Path): Either[IoError, Seq[FileStatus]] =
     for {
-      dataFiles <- io.walkFiles(path, dataFileFilter)
-                     .tap(_.logValueDebug("Listing data"))
-      _ <- Either.cond(dataFiles.nonEmpty, (), IoError(s"No data files found in $path", None))
-    } yield dataFiles
+      statuses <- io.walkFileStatuses(path, dataFileFilter).tap(_.logValueDebug("Listed file statuses"))
+      _        <- Either.cond(statuses.nonEmpty, (), IoError(s"No data files found in $path", None))
+    } yield statuses
 }
 
 object DataTool {

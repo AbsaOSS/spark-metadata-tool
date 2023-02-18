@@ -75,21 +75,18 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
       _            <- catchAsIoError(hdfs.mkdirs(dir))
     } yield ()
 
-  override def getFileStatus(file: Path): Either[IoError, FileStatus] =
-    catchAsIoError(hdfs.getFileStatus(file))
-
-  override def walkFiles(basePath: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
+  override def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]] =
     catchAsIoError {
-      val ri     = hdfs.listFiles(basePath, true)
-      val buffer = new mutable.ArrayBuffer[Path]()
+      val ri = hdfs.listFiles(baseDir, true)
+      val buffer = new mutable.ArrayBuffer[FileStatus]()
       while (ri.hasNext) {
-        val fileStatus = ri.next()
-        if (filter(fileStatus.getPath)) {
-          buffer += fileStatus.getPath
+        val status = ri.next()
+        if (filter(status.getPath)) {
+          buffer += status
         }
       }
-      buffer.sortInPlaceBy(_.toUri).toSeq
-    }.tap(_.logValueDebug(s"Contents of directory $basePath"))
+      buffer.sortInPlaceBy(_.getPath.toUri).toIndexedSeq
+    }
 
   private def listDirectory(path: Path): Either[IoError, Seq[Path]] =
     checkDirectoryExists(path) match {
