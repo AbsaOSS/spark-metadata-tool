@@ -25,18 +25,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{
-  CommonPrefix,
-  HeadObjectRequest,
-  HeadObjectResponse,
-  ListObjectsV2Request,
-  ListObjectsV2Response,
-  NoSuchKeyException,
-  PutObjectRequest,
-  PutObjectResponse,
-  S3Exception,
-  S3Object
-}
+import software.amazon.awssdk.services.s3.model.{CommonPrefix, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ListObjectsV2Response, NoSuchKeyException, PutObjectRequest, PutObjectResponse, S3Exception, S3Object}
+import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable
 import za.co.absa.spark_metadata_tool.model.IoError
 
 import java.time.Instant
@@ -74,42 +64,28 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
 
   }
 
-  "makeDir" should "create prefix in bucket tree with no size" in {
+  "makeDir" should "check that parent directory exists and expected dir is not present" in {
     val rootPath = new Path("s3://bucket/path/to/root")
     val dirPath  = new Path(rootPath, "child")
 
     val expectedReq = ListObjectsV2Request
       .builder()
       .bucket("bucket")
-      .prefix(s"path/to/")
+      .prefix(s"path/to/root/")
       .delimiter("/")
       .build()
     val expectedResp = ListObjectsV2Response
       .builder()
-      .prefix("path/to/")
+      .prefix("path/to/root/")
       .delimiter("/")
       .commonPrefixes(
-        CommonPrefix.builder().prefix("path/to/dir").build(),
-        CommonPrefix.builder().prefix("path/to/root").build(),
+        CommonPrefix.builder().prefix("path/to/root/").build(),
         CommonPrefix.builder().prefix("path/to/root/dir1").build(),
         CommonPrefix.builder().prefix("path/to/root/dir2").build()
       )
       .contents(S3Object.builder().key("path/to/root/file1").build())
       .build()
     (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
-
-    val putDirRequest = PutObjectRequest
-      .builder()
-      .bucket("bucket")
-      .key("path/to/root/child")
-      .build()
-    val putDirResp = PutObjectResponse
-      .builder()
-      .build()
-    (s3
-      .putObject(_: PutObjectRequest, _: RequestBody))
-      .expects(putDirRequest, *)
-      .returning(putDirResp)
 
     val res = io.makeDir(dirPath)
 
@@ -124,19 +100,18 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
     val expectedReq = ListObjectsV2Request
       .builder()
       .bucket("bucket")
-      .prefix(s"path/to/")
+      .prefix(s"path/to/root/")
       .delimiter("/")
       .build()
     val expectedResp = ListObjectsV2Response
       .builder()
-      .prefix("path/to/")
+      .prefix("path/to/root/")
       .delimiter("/")
       .commonPrefixes(
-        CommonPrefix.builder().prefix("path/to/dir").build(),
-        CommonPrefix.builder().prefix("path/to/root").build(),
-        CommonPrefix.builder().prefix("path/to/root/child").build(),
-        CommonPrefix.builder().prefix("path/to/root/dir1").build(),
-        CommonPrefix.builder().prefix("path/to/root/dir2").build()
+        CommonPrefix.builder().prefix("path/to/root/child/hidden=True").build(),
+        CommonPrefix.builder().prefix("path/to/root/child/hidden=False").build(),
+        CommonPrefix.builder().prefix("path/to/root/dir1/").build(),
+        CommonPrefix.builder().prefix("path/to/root/dir2/").build()
       )
       .contents(S3Object.builder().key("path/to/root/file1").build())
       .build()
@@ -154,47 +129,19 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
     val expectedReq = ListObjectsV2Request
       .builder()
       .bucket("bucket")
-      .prefix(s"path/to/")
+      .prefix(s"path/to/root/")
       .delimiter("/")
       .build()
     val expectedResp = ListObjectsV2Response
       .builder()
-      .prefix("path/to/")
+      .prefix("path/to/root/")
       .delimiter("/")
-      .commonPrefixes(
-        CommonPrefix.builder().prefix("path/to/dir").build(),
-        CommonPrefix.builder().prefix("path/to/other").build(),
-        CommonPrefix.builder().prefix("path/to/other/child").build(),
-        CommonPrefix.builder().prefix("path/to/other/dir1").build(),
-        CommonPrefix.builder().prefix("path/to/other/dir2").build()
-      )
-      .contents(S3Object.builder().key("path/to/other/file1").build())
       .build()
     (s3.listObjectsV2(_: ListObjectsV2Request)).expects(expectedReq).returning(expectedResp)
 
     val res = io.makeDir(dirPath)
 
     res should equal(Left(IoError("s3://bucket/path/to/root: No such file or directory", None)))
-  }
-
-  it should "fail when creating prefix returns an error" in {
-    val rootPath = new Path("s3://bucket/path/to/root")
-    val dirPath  = new Path(rootPath, "child")
-
-    val expectedReq = ListObjectsV2Request
-      .builder()
-      .bucket("bucket")
-      .prefix(s"path/to/")
-      .delimiter("/")
-      .build()
-    (s3
-      .listObjectsV2(_: ListObjectsV2Request))
-      .expects(expectedReq)
-      .throwing(S3Exception.builder().message("s3 exception").build())
-
-    val res = io.makeDir(dirPath)
-
-    res should matchPattern { case Left(IoError("s3 exception", Some(_))) => }
   }
 
   "getFileStatus" should "return FileStatus for specified file" in {
@@ -304,13 +251,11 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
       .builder()
       .prefix("path/to/root/")
       .bucket("bucket")
-      .delimiter("/")
       .build()
 
     val listResponse = ListObjectsV2Response
       .builder()
       .prefix("path/to/root")
-      .delimiter("/")
       .commonPrefixes(
         CommonPrefix.builder().prefix("gender=Male").build(),
         CommonPrefix.builder().prefix("gender=Female").build(),
@@ -344,7 +289,13 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
       )
       .build()
 
-    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(listRequest).returning(listResponse)
+    (s3.listObjectsV2Paginator(_: ListObjectsV2Request))
+      .expects(listRequest)
+      .returning(new ListObjectsV2Iterable(s3, listRequest))
+
+    (s3.listObjectsV2(_: ListObjectsV2Request))
+      .expects(listRequest)
+      .returning(listResponse)
 
     io.walkFiles(rootDir, _ => true) should equal(
       Right(
@@ -379,13 +330,11 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
       .builder()
       .prefix("path/to/root/")
       .bucket("bucket")
-      .delimiter("/")
       .build()
 
     val listResponse = ListObjectsV2Response
       .builder()
       .prefix("path/to/root")
-      .delimiter("/")
       .commonPrefixes(
         CommonPrefix.builder().prefix("gender=Male").build(),
         CommonPrefix.builder().prefix("gender=Female").build(),
@@ -447,7 +396,13 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
       )
       .build()
 
-    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(listRequest).returning(listResponse)
+    (s3.listObjectsV2Paginator(_: ListObjectsV2Request))
+      .expects(listRequest)
+      .returning(new ListObjectsV2Iterable(s3, listRequest))
+
+    (s3.listObjectsV2(_: ListObjectsV2Request))
+      .expects(listRequest)
+      .returning(listResponse)
 
     io.walkFiles(rootDir, _.getName.endsWith("parquet")) should equal(
       Right(
@@ -483,12 +438,11 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
       .builder()
       .prefix("path/to/root/")
       .bucket("bucket")
-      .delimiter("/")
       .build()
 
     val error = S3Exception.builder().message("s3 error").build()
 
-    (s3.listObjectsV2(_: ListObjectsV2Request)).expects(listRequest).throwing(error)
+    (s3.listObjectsV2Paginator(_: ListObjectsV2Request)).expects(listRequest).throwing(error)
 
     io.walkFiles(rootDir, _ => true) should equal(Left(IoError("s3 error", Some(error))))
   }

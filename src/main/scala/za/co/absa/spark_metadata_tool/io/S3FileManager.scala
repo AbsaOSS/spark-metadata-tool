@@ -18,12 +18,24 @@ package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
 import org.apache.hadoop.fs.{FileStatus, Path}
+import org.apache.http.client.utils.URIBuilder
 import org.log4s.Logger
 import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{CopyObjectRequest, Delete, DeleteObjectsRequest, GetObjectRequest, GetObjectResponse, HeadObjectRequest, HeadObjectResponse, ListObjectsV2Request, ObjectIdentifier, PutObjectRequest}
+import software.amazon.awssdk.services.s3.model.{
+  CopyObjectRequest,
+  Delete,
+  DeleteObjectsRequest,
+  GetObjectRequest,
+  GetObjectResponse,
+  HeadObjectRequest,
+  HeadObjectResponse,
+  ListObjectsV2Request,
+  ObjectIdentifier,
+  PutObjectRequest
+}
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.{All, Directory, File, FileType, IoError}
 
@@ -35,12 +47,13 @@ import scala.util.Using
 import scala.util.chaining._
 
 case class S3FileManager(s3: S3Client) extends FileManager {
+  import S3FileManager._
   implicit private val logger: Logger = org.log4s.getLogger
 
   override def copy(from: Path, to: Path): Either[IoError, Unit] = Try {
     val bucket  = getBucket(from)
-    val srcKey  = getKey(from, bucket)
-    val destKey = getKey(to, bucket)
+    val srcKey  = getKey(from)
+    val destKey = getKey(to)
 
     val request = CopyObjectRequest
       .builder()
@@ -58,7 +71,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     val bucket = getBucket(
       paths.headOption.getOrElse(throw new IllegalArgumentException("Empty list of paths to delete"))
     ) //TODO: use NEL
-    val keys = paths.map(p => ObjectIdentifier.builder().key(getKey(p, bucket)).build())
+    val keys = paths.map(p => ObjectIdentifier.builder().key(getKey(p)).build())
 
     val del = Delete.builder().objects(keys: _*).quiet(false).build()
     val req = DeleteObjectsRequest.builder().bucket(bucket).delete(del).build()
@@ -69,7 +82,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   override def readAllLines(path: Path): Either[IoError, Seq[String]] = {
     val bucket = getBucket(path)
-    val key    = getKey(path, bucket)
+    val key    = getKey(path)
 
     val getObjectRequest = GetObjectRequest
       .builder()
@@ -101,16 +114,12 @@ case class S3FileManager(s3: S3Client) extends FileManager {
   override def listFiles(path: Path): Either[IoError, Seq[Path]] =
     listBucket(path, File).tap(_.logValueDebug(s"Listed files in ${path.toString}"))
 
-  override def makeDir(dir: Path): Either[IoError, Unit] = {
-    val parentDir = dir.getParent
-    val dirName   = dir.getName
+  override def makeDir(dir: Path): Either[IoError, Unit] =
     for {
-      files <- listBucket(dir.getParent.getParent, All).map(_.filter(_.getParent == parentDir))
-      _     <- Either.cond(files.nonEmpty, (), IoError(s"${dir.getParent}: No such file or directory", None))
-      _     <- Either.cond(files.forall(_.getName != dirName), (), IoError(s"${dir.getName}: File exists", None))
-      _     <- putToDestination(dir, RequestBody.empty())
+      fls <- listDirectories(dir.getParent)
+      _   <- Either.cond(fls.nonEmpty, (), IoError(s"${dir.getParent}: No such file or directory", None))
+      _   <- Either.cond(notContainDir(fls, dir), (), IoError(s"${dir.getName}: File exists", None))
     } yield ()
-  }
 
   override def getFileStatus(file: Path): Either[IoError, FileStatus] =
     listDirectories(file.getParent).flatMap { dirs =>
@@ -139,12 +148,26 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       }
     }
 
-  override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] =
-    listFiles(baseDir).map(_.filter(filter)).tap(_.logValueDebug(s"Contents of directory $baseDir"))
+  override def walkFiles(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[Path]] = {
+    val bucket = getBucket(baseDir)
+    val prefix = ensureTrailingSlash(getKey(baseDir))
+
+    val builder = new URIBuilder().setScheme("s3").setHost(bucket)
+
+    val request = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build()
+
+    catchAsIoError {
+      for {
+        page <- s3.listObjectsV2Paginator(request).iterator().asScala
+        obj  <- page.contents().asScala
+        pth  <- Some(new Path(builder.setPath(obj.key()).build())).filter(filter)
+      } yield pth
+    }.map(_.toSeq)
+  }
 
   private def headObject(file: Path): Either[IoError, HeadObjectResponse] = {
     val bucket = getBucket(file)
-    val key    = getKey(file, bucket)
+    val key    = getKey(file)
 
     val request = HeadObjectRequest
       .builder()
@@ -157,7 +180,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   private def putToDestination(path: Path, body: RequestBody): Either[IoError, Unit] = {
     val bucket = getBucket(path)
-    val key    = getKey(path, bucket)
+    val key    = getKey(path)
 
     val objectRequest = PutObjectRequest
       .builder()
@@ -209,7 +232,23 @@ case class S3FileManager(s3: S3Client) extends FileManager {
       case All       => (files ++ dirs).toSeq
     }
   }.toEither.leftMap(err => IoError(err.getMessage, err.some))
+}
 
-  private def getBucket(path: Path): String              = path.toUri.getHost
-  private def getKey(path: Path, bucket: String): String = path.toString.stripPrefix(s"s3://$bucket/")
+object S3FileManager {
+
+  private def getBucket(path: Path): String =
+    path.toUri.getHost
+
+  private def notContainDir(prefixes: Iterable[Path], dir: Path): Boolean = {
+    val dirPath = ensureTrailingSlash(getKey(dir))
+    prefixes.forall(pref => !getKey(pref).startsWith(dirPath))
+  }
+
+  private def getKey(path: Path): String =
+    path.toUri.getPath.stripPrefix("/")
+
+  private def ensureTrailingSlash(path: String): String = path.last match {
+    case '/' => path
+    case _   => path :+ '/'
+  }
 }
