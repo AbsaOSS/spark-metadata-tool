@@ -79,8 +79,8 @@ case object UnixFileManager extends FileManager {
   override def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]] =
     for {
       it <- catchAsIoError(Files.walk(Paths.get(toUriWithScheme(baseDir))).iterator().asScala)
-      statuses <- it.map(getFileStatus).toSeq.sequence
-    } yield statuses
+      statuses <- it.filter(p => filter(new Path(p.toUri))).map(getFileStatus).toSeq.sequence
+    } yield statuses.sortBy(_.getPath.toUri)
 
   private def getFileStatus(path: JPath): Either[IoError, FileStatus] =
     for {
