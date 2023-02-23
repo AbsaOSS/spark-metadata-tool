@@ -95,7 +95,7 @@ object ArgumentParser {
       note(sys.props("line.separator")),
       cmd("create-metadata")
         .text("Create Spark structured streaming metadata")
-        .action((_, c) => c.copy(mode = CreateMetadata(maxMicroBatchNumber = 0, compactionNumber =  1)))
+        .action((_, c) => c.copy(mode = CreateMetadata(maxMicroBatchNumber = 0, compactionNumber =  10)))
         .children(
           opt[Path]('p', "path")
             .required()
