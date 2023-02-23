@@ -128,6 +128,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
     val request = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build()
 
+    // listObjectsV2 returns objects in ascending order by key, so we don't have to order them
     catchAsIoError {
       for {
         page   <- s3.listObjectsV2Paginator(request).iterator().asScala
