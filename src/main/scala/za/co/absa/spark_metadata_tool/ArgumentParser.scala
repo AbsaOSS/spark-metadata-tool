@@ -107,6 +107,7 @@ object ArgumentParser {
             .text("set max batch number"),
           opt[Int]('c', "compaction-number")
             .required()
+            .validate(validateCompactionNumber)
             .action((x, c) => c.copy(mode = c.mode.asInstanceOf[CreateMetadata].copy(compactionNumber = x)))
             .text("set compaction number")
         ),
@@ -186,5 +187,8 @@ object ArgumentParser {
         s"Couldn't extract filesystem from path $path"
       ).asLeft
   }
+
+  private def validateCompactionNumber(compactionNumber: Int): Either[String, Unit] =
+    Either.cond(compactionNumber > 0, (), s"Compaction number must be greater than 0, but $compactionNumber provided")
 
 }
