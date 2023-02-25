@@ -18,12 +18,38 @@ package za.co.absa.spark_metadata_tool
 
 object Compaction {
 
-  def lastCompaction(maxMicroBatchNumber: Int, compactionNumber: Int): Option[Int] = {
-    if (maxMicroBatchNumber > compactionNumber - 1) {
-      Some(maxMicroBatchNumber - (maxMicroBatchNumber % compactionNumber) - 1)
+  /** Calculates amount of metadata entries entering latest `.compact` file
+    *
+    * Such number might be negative meaning, that we have to create dummy metadata files. The amount of missing metadata
+    * files is negative of returned value (`- Compaction#compactedSize(...)`).
+    *
+    * @param statusLen
+    *   size of collected data files by metadata tool.
+    * @param maxMicroBatchNum
+    *   highest number of metadata file
+    * @param compactionPeriod
+    *   period of compaction cycle
+    * @return
+    *   amount of entries in compact files, or if negative, amount of missing entries
+    */
+  def compactedSize(statusLen: Int, maxMicroBatchNum: Int, compactionPeriod: Int): Int =
+    statusLen - (maxMicroBatchNum % compactionPeriod) - 1 // statusLen - (maxMicroBatchNum - lastCompaction)
+
+  /** Calculate batch number of last compacted file.
+    *
+    * If `compactionPeriod` is greater than `maxMicroBatchNumber` `None` is returned instead of `-1`.
+    *
+    * @param maxMicroBatchNum
+    *   highest number of metadata file
+    * @param compactionPeriod
+    *   period of compaction cycle
+    * @return
+    *   micro batch number of last compact file or none
+    */
+  def lastCompaction(maxMicroBatchNum: Int, compactionPeriod: Int): Option[Int] =
+    if (maxMicroBatchNum > compactionPeriod - 1) {
+      Some(maxMicroBatchNum - (maxMicroBatchNum % compactionPeriod) - 1)
     } else {
       None
     }
-  }
-
 }

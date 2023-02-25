@@ -68,41 +68,6 @@ class DataToolSpec extends AnyFlatSpec with Matchers with OptionValues with Eith
     dataTool.listDataFileStatuses(baseDir) should equal(Left(IoError("io error", Some(exception))))
   }
 
-  "listDatafilesUpToPart" should "takes only first 5 files" in {
-    (fileManager
-      .walkFileStatuses(_: Path, _: Path => Boolean))
-      .expects(baseDir, *)
-      .returning(
-        Right(
-          Seq(
-            mkStatus("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet"),
-            mkStatus("gender=Male/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Male/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.parquet"),
-            mkStatus("gender=Unknown/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Unknown/part-00003-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-            mkStatus("gender=Unknown/part-00007-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet")
-          )
-        )
-      )
-
-    val maxPartNumber = 5
-    dataTool.listStatusesUpToPart(baseDir, maxPartNumber) should equal(
-      Right(
-        Seq(
-          mkStatus("gender=Female/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-          mkStatus("gender=Female/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-          mkStatus("gender=Female/part-00002-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-          mkStatus("gender=Male/part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),
-          mkStatus("gender=Male/part-00001-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.snappy.parquet")
-        )
-      )
-    )
-  }
-
   "dataFileFilter" should "filter only visible parquet files" in {
     val expected = Seq(
       mkPath("part-00000-a1216290-6a82-4a9d-9e6c-de1e7c9bbe5b.c000.snappy.parquet"),

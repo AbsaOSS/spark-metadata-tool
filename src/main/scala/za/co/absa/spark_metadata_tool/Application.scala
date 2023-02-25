@@ -160,12 +160,14 @@ object Application extends App {
   ): Either[AppError, Unit] = {
     val metadataDir = new Path(config.path, SparkMetadataDir)
     for {
-      _         <- io.makeDir(metadataDir)
-      statuses <- dataTool.listStatusesUpToPart(config.path, createMetadata.maxMicroBatchNumber)
+      _           <- io.makeDir(metadataDir)
+      statuses    <- dataTool.listDataFileStatuses(config.path)
+      sinkStatuses = statuses.map(SinkFileStatus.asAddStatus)
       _ <- tool.saveMetadata(
              metadataDir,
-             Compaction.lastCompaction(createMetadata.maxMicroBatchNumber, createMetadata.compactionNumber),
-             statuses.map(SinkFileStatus.asAddStatus),
+             sinkStatuses,
+             createMetadata.maxMicroBatchNumber,
+             createMetadata.compactionNumber,
              config.dryRun
            )
     } yield ()

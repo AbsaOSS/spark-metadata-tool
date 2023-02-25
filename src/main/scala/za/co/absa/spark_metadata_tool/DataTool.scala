@@ -27,9 +27,6 @@ import scala.util.chaining.scalaUtilChainingOps
 class DataTool(io: FileManager) {
   import za.co.absa.spark_metadata_tool.DataTool._
 
-  def listStatusesUpToPart(path: Path, maxPartNumber: Int): Either[IoError, Seq[FileStatus]] =
-    listDataFileStatuses(path).map(_.take(maxPartNumber))
-
   def listDataFileStatuses(path: Path): Either[IoError, Seq[FileStatus]] =
     for {
       statuses <- io.walkFileStatuses(path, dataFileFilter).tap(_.logValueDebug("Listed file statuses"))

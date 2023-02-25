@@ -90,16 +90,206 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res.left.value shouldBe err
   }
 
-  "saveMetadataFiles" should "create properly formatted metadata files" in {
-    val fileStatus = SinkFileStatus(
-      path = s"$s3BaseString/part-0000-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
-      size = 1234L,
-      isDir = false,
-      modificationTime = System.currentTimeMillis(),
-      blockReplication = 1,
-      blockSize = 132456L,
-      action = "add"
-    )
+  "saveMetadata" should "save metadata from latest compaction number for maxMicroBatchNum equal to amount of files" in {
+    val statuses         = mkStatuses(size = 24)
+    val maxMicroBatchNum = 23
+    val compactionPeriod = 10
+    val metadataPath     = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "19.compact"),
+      "v1" +: statuses.take(20).map(_.asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "20"),
+      Seq("v1", statuses(20).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "21"),
+      Seq("v1", statuses(21).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "22"),
+      Seq("v1", statuses(22).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "23"),
+      Seq("v1", statuses(23).asJson.noSpaces)
+    ).returning(Right(()))
+
+    metadataTool.saveMetadata(metadataPath, statuses, maxMicroBatchNum, compactionPeriod, dryRun = false)
+  }
+
+  it should "split metadata when data file count is less than maxMicroBatchNum but larger then compactionPeriod" in {
+    val statuses = mkStatuses(size = 15)
+    val maxMicroBatchNum = 23
+    val compactionPeriod = 10
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "19.compact"),
+      "v1" +: statuses.take(11).map(_.asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "20"),
+      Seq("v1", statuses(11).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "21"),
+      Seq("v1", statuses(12).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "22"),
+      Seq("v1", statuses(13).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "23"),
+      Seq("v1", statuses(14).asJson.noSpaces)
+    ).returning(Right(()))
+
+    metadataTool.saveMetadata(metadataPath, statuses, maxMicroBatchNum, compactionPeriod, dryRun = false)
+  }
+
+  it should "not create compact file when maxMicroBatchNum is less than compactionPeriod (first cycle)" in {
+    val statuses = mkStatuses(size = 4)
+    val maxMicroBatchNum = 3
+    val compactionPeriod = 10
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "0"),
+      Seq("v1", statuses.head.asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "1"),
+      Seq("v1", statuses(1).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "2"),
+      Seq("v1", statuses(2).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "3"),
+      Seq("v1", statuses(3).asJson.noSpaces)
+    ).returning(Right(()))
+
+    metadataTool.saveMetadata(metadataPath, statuses, maxMicroBatchNum, compactionPeriod, dryRun = false)
+  }
+
+  it should "put multiple entries in 0-th file if maxMicroBatchNum is less than amount of files (first period)" in {
+    val statuses = mkStatuses(size = 8)
+    val maxMicroBatchNum = 3
+    val compactionPeriod = 10
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "0"),
+      "v1" +: statuses.take(5).map(_.asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "1"),
+      Seq("v1", statuses(5).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "2"),
+      Seq("v1", statuses(6).asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "3"),
+      Seq("v1", statuses(7).asJson.noSpaces)
+    ).returning(Right(()))
+
+    metadataTool.saveMetadata(metadataPath, statuses, maxMicroBatchNum, compactionPeriod, dryRun = false)
+  }
+
+  it should "create mock metadata files when amount of files is less than compactionPeriod" in {
+    val statuses = mkStatuses(size = 2)
+    val maxMicroBatchNum = 23
+    val compactionPeriod = 10
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "19.compact"),
+      Seq("v1")
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "20"),
+      Seq("v1")
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "21"),
+      Seq("v1")
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "22"),
+      Seq("v1", statuses.head.asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "23"),
+      Seq("v1", statuses(1).asJson.noSpaces)
+    ).returning(Right(()))
+
+    metadataTool.saveMetadata(metadataPath, statuses, maxMicroBatchNum, compactionPeriod, dryRun = false)
+  }
+
+  it should "not create .compact file and fill metadata with dummy files in (first period)" in {
+    val statuses = mkStatuses(size = 2)
+    val maxMicroBatchNum = 4
+    val compactionPeriod = 10
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "0"),
+      Seq("v1")
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "1"),
+      Seq("v1")
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "2"),
+      Seq("v1")
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "3"),
+      Seq("v1", statuses.head.asJson.noSpaces)
+    ).returning(Right(()))
+
+    (fileManager.write _).expects(
+      new Path(metadataPath, "4"),
+      Seq("v1", statuses(1).asJson.noSpaces)
+    ).returning(Right(()))
+
+    metadataTool.saveMetadata(metadataPath, statuses, maxMicroBatchNum, compactionPeriod, dryRun = false)
+
+  }
+
+  private def mkStatuses(size: Int): Seq[SinkFileStatus] =
+    (0 until size).map(mkStatus)
+
+  "saveLooseMetadata" should "create properly formatted metadata files" in {
+    val fileStatus   = mkStatus(0)
     val metadataPath = new Path(s3BaseString, SparkMetadataDir)
 
     (fileManager.write _)
@@ -112,36 +302,15 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
       )
       .returning(Right(()))
 
-    val res = metadataTool.saveMetadataFiles(
-      metadataPath,
-      -1,
-      Seq(fileStatus),
-      dryRun = false
-    )
+    val res = metadataTool.saveLooseMetadata(metadataPath, Seq((0, Seq(fileStatus))), dryRun = false)
 
     res should equal(Right(()))
   }
 
   it should "create multiple metadata files from multiple inputs" in {
-    val zerothFileStatus = SinkFileStatus(
-      path = s"$s3BaseString/part-0000-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
-      size = 1234L,
-      isDir = false,
-      modificationTime = System.currentTimeMillis(),
-      blockReplication = 1,
-      blockSize = 132456L,
-      action = "add"
-    )
-    val firstFileStatus = SinkFileStatus(
-      path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
-      size = 1234L,
-      isDir = false,
-      modificationTime = System.currentTimeMillis(),
-      blockReplication = 1,
-      blockSize = 132456L,
-      action = "add"
-    )
-    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+    val zerothFileStatus = mkStatus(0)
+    val firstFileStatus  = mkStatus(1)
+    val metadataPath     = new Path(s3BaseString, SparkMetadataDir)
 
     (fileManager.write _)
       .expects(
@@ -162,10 +331,9 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
       )
       .returning(Right(()))
 
-    val res = metadataTool.saveMetadataFiles(
+    val res = metadataTool.saveLooseMetadata(
       metadataPath,
-      compactionNum = -1,
-      Seq(zerothFileStatus, firstFileStatus),
+      Seq((0, Seq(zerothFileStatus)), (1, Seq(firstFileStatus))),
       dryRun = false
     )
 
@@ -173,24 +341,15 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   it should "fail when at least on metadata file can not be written" in {
-    val fileStatus = SinkFileStatus(
-      path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
-      size = 1234L,
-      isDir = false,
-      modificationTime = System.currentTimeMillis(),
-      blockReplication = 1,
-      blockSize = 132456L,
-      action = "add"
-    )
+    val fileStatus   = mkStatus(0)
     val metadataPath = new Path(s3BaseString, SparkMetadataDir)
 
     (fileManager.write _).expects(*, *).returning(Right(()))
     (fileManager.write _).expects(*, *).returning(Left(IoError("File already exists", None)))
 
-    val res = metadataTool.saveMetadataFiles(
+    val res = metadataTool.saveLooseMetadata(
       metadataPath,
-      compactionNum = 0,
-      metadata = Seq(fileStatus, fileStatus),
+      Seq((0, Seq(fileStatus)), (1, Seq(fileStatus))),
       dryRun = false
     )
 
@@ -198,22 +357,10 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
   }
 
   "saveCompactedMetadata" should "create properly formatted compacted metadata file" in {
-    val zerothFileStatus = SinkFileStatus(
-      path = s"$s3BaseString/part-0000-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
-      size = 1234L,
-      isDir = false,
-      modificationTime = System.currentTimeMillis(),
-      blockReplication = 1,
-      blockSize = 132456L,
-      action = "add"
-    )
-    val firstFileStatus = zerothFileStatus.copy(
-      path = s"$s3BaseString/part-0001-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet"
-    )
-    val secondFileStatus = zerothFileStatus.copy(
-      path = s"$s3BaseString/part-0002-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet"
-    )
-    val metadataDir = new Path(s3BaseString, SparkMetadataDir)
+    val zerothFileStatus = mkStatus(0)
+    val firstFileStatus  = mkStatus(1)
+    val secondFileStatus = mkStatus(2)
+    val metadataDir      = new Path(s3BaseString, SparkMetadataDir)
 
     (fileManager.write _)
       .expects(
@@ -237,7 +384,32 @@ class MetadataToolSpec extends AnyFlatSpec with Matchers with OptionValues with 
     res should equal(Right(()))
   }
 
-  it should "fail on save metadata failure" in {}
+  it should "fail on save metadata failure" in {
+    val fileStatus = mkStatus(0)
+    val metadataPath = new Path(s3BaseString, SparkMetadataDir)
+
+    (fileManager.write _).expects(*, *).returning(Left(IoError("Io Error", None)))
+
+    val res = metadataTool.saveCompactedMetadata(
+      metadataPath,
+      compactionNum = 19,
+      Seq(fileStatus),
+      dryRun = false
+    )
+
+    res should equal(Left(IoError("Io Error", None)))
+  }
+
+  private def mkStatus(partNum: Int): SinkFileStatus =
+    SinkFileStatus(
+      path = f"$s3BaseString/part-$partNum%05d-12345678-9999-0000-aaaa-bcdef12345.snappy.parquet",
+      size = 1234L,
+      isDir = false,
+      modificationTime = System.currentTimeMillis(),
+      blockReplication = 1,
+      blockSize = 132456L,
+      action = "add"
+    )
 
   "fixPaths" should "replace old paths if no partition key was provided" in {
     val numLines = 10

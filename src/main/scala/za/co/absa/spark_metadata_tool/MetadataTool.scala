@@ -87,19 +87,44 @@ class MetadataTool(io: FileManager) {
 
   def saveMetadata(
     dir: Path,
-    maybeLastCompactionNumber: Option[Int],
-    metadata: Seq[SinkFileStatus],
+    statuses: Seq[SinkFileStatus],
+    maxMicroBatchNum: Int,
+    compactionPeriod: Int,
     dryRun: Boolean
-  ): Either[AppError, Unit] =
-    maybeLastCompactionNumber.map { lastCompaction =>
-      val (compacted, rest) = metadata.splitAt(lastCompaction)
-      for {
-        _ <- saveCompactedMetadata(dir, lastCompaction, compacted, dryRun)
-        _ <- saveMetadataFiles(dir, lastCompaction, rest, dryRun)
-      } yield ()
-    }.getOrElse(
-      saveMetadataFiles(dir, -1, metadata, dryRun)
-    )
+  ): Either[AppError, Unit] = {
+    val lastCompaction = Compaction.lastCompaction(maxMicroBatchNum, compactionPeriod)
+    val compactedSize  = Compaction.compactedSize(statuses.length, maxMicroBatchNum, compactionPeriod)
+    for {
+      _ <- compactedMetadata(statuses, compactedSize, lastCompaction).map { case (lastCompaction, compacted) =>
+             saveCompactedMetadata(dir, lastCompaction, compacted, dryRun)
+           }.getOrElse(Right(()))
+      _ <- saveLooseMetadata(dir, looseMetadata(statuses, compactedSize, lastCompaction), dryRun)
+    } yield ()
+  }
+
+  private def compactedMetadata(
+    statuses: Seq[SinkFileStatus],
+    compactedSize: Int,
+    lastCompaction: Option[Int]
+  ): Option[(Int, Seq[SinkFileStatus])] =
+    lastCompaction.map((_, if (compactedSize > 0) statuses.take(compactedSize) else Seq.empty))
+
+  private def looseMetadata(
+    statuses: Seq[SinkFileStatus],
+    compactedSize: Int,
+    lastCompacted: Option[Int]
+  ): Seq[(Int, Iterable[SinkFileStatus])] =
+    if (compactedSize > 0) {
+      lastCompacted.map { lc =>
+        statuses.drop(compactedSize).mapWithIndex((status, idx) => (lc + 1 + idx, Seq(status)))
+      }.getOrElse {
+        val zeroth = (0, statuses.take(compactedSize + 1))
+        zeroth +: statuses.drop(compactedSize + 1).mapWithIndex((s, idx) => (idx + 1, Seq(s)))
+      }
+    } else {
+      val lc = lastCompacted.getOrElse(-1)
+      (Seq.fill(-compactedSize)(None) ++: statuses.map(Some(_))).mapWithIndex((s, idx) => (lc + 1 + idx, s))
+    }
 
   def saveCompactedMetadata(
     dir: Path,
@@ -109,22 +134,22 @@ class MetadataTool(io: FileManager) {
   ): Either[AppError, Unit] =
     saveFile(
       new Path(dir, s"$compactionNum.$compactFileSuffix"),
-      Seq(StringLine("v1")) ++ metadata.map(_.asJson).map(JsonLine),
+      formatMetadata(metadata),
       dryRun
     )
 
-  def saveMetadataFiles(
+  def saveLooseMetadata(
     dir: Path,
-    compactionNum: Int,
-    metadata: Seq[SinkFileStatus],
+    metadata: Seq[(Int, Iterable[SinkFileStatus])],
     dryRun: Boolean
   ): Either[AppError, Unit] =
-    metadata
-      .zipWithIndex
-      .map(m => (m._1, m._2 + compactionNum + 1))
-      .map(m => saveFile(new Path(dir, m._2.toString), Seq(StringLine("v1"), JsonLine(m._1.asJson)), dryRun))
-      .sequence
+    metadata.map { case (batchNum, statuses) =>
+      saveFile(new Path(dir, batchNum.toString), formatMetadata(statuses), dryRun)
+    }.sequence
       .map(_ => ())
+
+  private def formatMetadata(metadata: Iterable[SinkFileStatus]): Seq[FileLine] =
+    StringLine("v1") +: metadata.map(_.asJson).map(JsonLine).toSeq
 
   /** Saves the data into a file on provided path. If the file already exists, its contents will be overwritten.
     *
