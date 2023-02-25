@@ -26,6 +26,30 @@ trait FileManager {
   def write(path: Path, lines: Seq[String]): Either[IoError, Unit]
   def copy(from: Path, to: Path): Either[IoError, Unit]
   def delete(paths: Seq[Path]): Either[IoError, Unit]
+
+  /** Create directory in specified location
+    *
+    * Note that directory will be created only if following conditions are met:
+    *
+    *   - Directory will be created only if parent directory
+    *   - Directory will be created only if location with same name doesn't exist.
+    * @param dir
+    *   Directory path
+    * @return
+    *   Unit.right if directory was created, otherwise IoError.left with appropriate exception
+    */
   def makeDir(dir: Path): Either[IoError, Unit]
+
+  /** Walks through directory tree returning all statuses of visited files
+    *
+    * FilesStatuses are ordered ascendingly by their uri.
+    *
+    * @param baseDir
+    *   root directory of directory tree
+    * @param filter
+    *   predicated used for filtering files by path
+    * @return
+    *   sequence of statuses of visited files their paths satisfied condition, or error.
+    */
   def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]]
 }
