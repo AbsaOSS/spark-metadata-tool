@@ -68,8 +68,8 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
 
   override def makeDir(dir: Path): Either[IoError, Unit] =
     for {
-      fileExists   <- checkDirectoryExists(dir)
-      _            <- Either.cond(!fileExists, (), IoError(s"${dir.getName}: File exists", None))
+      notPresent   <- catchAsIoError(!hdfs.exists(dir))
+      _            <- Either.cond(notPresent, (), IoError(s"${dir.getName}: File exists", None))
       parentExists <- checkDirectoryExists(dir.getParent)
       _            <- Either.cond(parentExists, (), IoError(s"${dir.getParent}: No such file or directory", None))
       _            <- catchAsIoError(hdfs.mkdirs(dir))

@@ -31,7 +31,7 @@ trait FileManager {
     *
     * Note that directory will be created only if following conditions are met:
     *
-    *   - Directory will be created only if parent directory
+    *   - Directory will be created only if parent directory exists.
     *   - Directory will be created only if location with same name doesn't exist.
     * @param dir
     *   Directory path
