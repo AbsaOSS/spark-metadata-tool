@@ -18,11 +18,12 @@ package za.co.absa.spark_metadata_tool.io
 
 import org.log4s.Logger
 import za.co.absa.spark_metadata_tool.model.IoError
-import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
+import org.apache.hadoop.fs.{FileStatus, FileSystem, FileUtil, Path}
 import cats.implicits._
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 
 import java.io.PrintWriter
+import scala.collection.mutable
 import scala.io.Source
 import scala.util.chaining._
 import scala.util.{Try, Using}
@@ -65,7 +66,29 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
     paths.foreach(p => hdfs.delete(p, false))
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
-  private def listDirectory(path: Path): Either[IoError, Seq[Path]] = {
+  override def makeDir(dir: Path): Either[IoError, Unit] =
+    for {
+      notPresent   <- catchAsIoError(!hdfs.exists(dir))
+      _            <- Either.cond(notPresent, (), IoError(s"${dir.getName}: File exists", None))
+      parentExists <- checkDirectoryExists(dir.getParent)
+      _            <- Either.cond(parentExists, (), IoError(s"${dir.getParent}: No such file or directory", None))
+      _            <- catchAsIoError(hdfs.mkdirs(dir))
+    } yield ()
+
+  override def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]] =
+    catchAsIoError {
+      val ri = hdfs.listFiles(baseDir, true)
+      val buffer = new mutable.ArrayBuffer[FileStatus]()
+      while (ri.hasNext) {
+        val status = ri.next()
+        if (filter(status.getPath)) {
+          buffer += status
+        }
+      }
+      buffer.sortInPlaceBy(_.getPath.toUri).toIndexedSeq
+    }
+
+  private def listDirectory(path: Path): Either[IoError, Seq[Path]] =
     checkDirectoryExists(path) match {
       case Right(true) =>
         Try {
@@ -75,9 +98,8 @@ case class HdfsFileManager(hdfs: FileSystem) extends FileManager {
           files => files.toSeq.asRight
         )
       case Right(false) => IoError(s"$path does not exist or is not a directory", None).asLeft
-      case Left(error) => error.asLeft
+      case Left(error)  => error.asLeft
     }
-  }
 
   private def checkDirectoryExists(directory: Path): Either[IoError, Boolean] = Try {
     hdfs.exists(directory) && hdfs.isDirectory(directory)

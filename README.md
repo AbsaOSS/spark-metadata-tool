@@ -60,6 +60,27 @@ In every run mode, the tool offers following universal features:
 
 Note that the tool does not perform any operation to file system
 
+### create-metadata
+- Generates `_spark_metadata` directory with spark streaming metadata from the latest compaction file
+
+Example:
+* Let `hdfs://authority/path/to/data/` be a path with partitioned or unpartitioned data,
+  (i.e. `hdfs://authority/path/to/data/p1=k11/.../pn=kn1/part-wxyz-<uuid>.c001.snappy.parquet`,
+  or simpler version without partitioning `hdfs://authority/path/to/data/part-wxyz-<uuid>.c001.snappy.parquet`)
+
+1. Tool will create `hdfs://authority/path/to/data/_spark_metadata` directory in data root directory
+2. Tool will search for all datafiles in directory tree and extract their metadata (e.g. `size`, `path`, `lastModified`, ...).
+   Returned set will be alphanumerically **ordered** and **trimmed** to match `--max-micro-batch-number`
+3. It will calculate last compaction from provided parameters `--max-micro-batch-number` and `--compaction-number`
+4. Metadata **up to last compaction** will be written to `hdfs://authority/path/to/data/_spark_metada/<last_compaction>.compact`
+5. **Rest** of the metadata will be written to **non-compacted** metadata files **up to max micro batch number**:
+   `hdfs://authority/path/to/data/_spark_metadata/<max_micro_batch_number>`
+
+> **NOTE**
+> 
+> This tool trims data files to the size of `--max-micro-batch-number`. So make sure you counted your datafiles properly.
+> Also when set too high all  the data will end up in one `.compact` file.
+
 ## Usage
 ### Obtaining
 The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool_2.13-x.y.z-assembly.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
@@ -83,7 +104,7 @@ The target filesystem is derived automatically from the provided path:
 
 ### Complete list of allowed arguments:
 ```
-Usage: spark-metadata-tool [fix-paths|merge] [options]
+Usage: spark-metadata-tool [fix-paths|merge|create-metadata] [options]
 
 Command: fix-paths [options]
 Fix paths in Spark metadata files to match current location
@@ -98,6 +119,14 @@ Merge Spark metadata files from 2 directories
 Command: compare-metadata-with-data [options]
 Compares metadata records with data and log all inconsistencies
   -p, --path <value>       full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)
+  
+Command: create-metada [options]
+Create Spark structured streaming metadata
+  -p, --path <value>      full path to data folder, including filesystem (e.g. s3://bucket/foo/root)
+  -m, --max-micro-batch-number <value>
+                          set max batch number
+  -c, --compaction-number <value>
+                          set compaction number
 
 
 Other options:

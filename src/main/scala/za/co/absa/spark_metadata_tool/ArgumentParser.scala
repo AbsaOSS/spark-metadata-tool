@@ -37,6 +37,7 @@ import za.co.absa.spark_metadata_tool.model.S3
 import za.co.absa.spark_metadata_tool.model.TargetFilesystem
 import za.co.absa.spark_metadata_tool.model.Unix
 import za.co.absa.spark_metadata_tool.model.UnknownFileSystemError
+import za.co.absa.spark_metadata_tool.model.CreateMetadata
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -90,6 +91,25 @@ object ArgumentParser {
             .required()
             .action((x, c) => c.copy(path = x))
             .text("full path to the data folder, including filesystem (e.g. s3://bucket/foo/root)")
+        ),
+      note(sys.props("line.separator")),
+      cmd("create-metadata")
+        .text("Create Spark structured streaming metadata")
+        .action((_, c) => c.copy(mode = CreateMetadata(maxMicroBatchNumber = 0, compactionNumber =  10)))
+        .children(
+          opt[Path]('p', "path")
+            .required()
+            .action((x, c) => c.copy(path = x))
+            .text("full path to data folder, including filesystem (e.g. s3://bucket/foo/root)"),
+          opt[Int]('m', "max-micro-batch-number")
+            .required()
+            .action((x, c) => c.copy(mode = c.mode.asInstanceOf[CreateMetadata].copy(maxMicroBatchNumber = x)))
+            .text("set max batch number"),
+          opt[Int]('c', "compaction-number")
+            .required()
+            .validate(validateCompactionNumber)
+            .action((x, c) => c.copy(mode = c.mode.asInstanceOf[CreateMetadata].copy(compactionNumber = x)))
+            .text("set compaction number")
         ),
       note(sys.props("line.separator")),
       note("Other options:"),
@@ -167,5 +187,8 @@ object ArgumentParser {
         s"Couldn't extract filesystem from path $path"
       ).asLeft
   }
+
+  private def validateCompactionNumber(compactionNumber: Int): Either[String, Unit] =
+    Either.cond(compactionNumber > 0, (), s"Compaction number must be greater than 0, but $compactionNumber provided")
 
 }

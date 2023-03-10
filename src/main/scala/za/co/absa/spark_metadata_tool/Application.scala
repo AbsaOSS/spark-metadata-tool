@@ -24,19 +24,23 @@ import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
-import za.co.absa.spark_metadata_tool.model.AppConfig
-import za.co.absa.spark_metadata_tool.model.AppError
-import za.co.absa.spark_metadata_tool.model.AppErrorWithThrowable
-import za.co.absa.spark_metadata_tool.model.FixPaths
-import za.co.absa.spark_metadata_tool.model.Hdfs
-import za.co.absa.spark_metadata_tool.model.InitializationError
-import za.co.absa.spark_metadata_tool.model.Merge
-import za.co.absa.spark_metadata_tool.model.NotFoundError
-import za.co.absa.spark_metadata_tool.model.S3
-import za.co.absa.spark_metadata_tool.model.TargetFilesystem
-import za.co.absa.spark_metadata_tool.model.Unix
-import za.co.absa.spark_metadata_tool.model.UnknownError
-import za.co.absa.spark_metadata_tool.model.CompareMetadataWithData
+import za.co.absa.spark_metadata_tool.model.{
+  AppConfig,
+  AppError,
+  AppErrorWithThrowable,
+  CompareMetadataWithData,
+  CreateMetadata,
+  FixPaths,
+  Hdfs,
+  InitializationError,
+  Merge,
+  NotFoundError,
+  S3,
+  SinkFileStatus,
+  TargetFilesystem,
+  Unix,
+  UnknownError
+}
 
 import scala.util.Try
 import scala.util.chaining._
@@ -55,19 +59,20 @@ object Application extends App {
            case FixPaths                => fixPaths(conf, io, tool)
            case Merge                   => mergeMetadataFiles(conf, io, tool)
            case CompareMetadataWithData => compareMetadataWithData(conf, io, tool)
+           case m: CreateMetadata       => createMetadata(conf, io, tool, new DataTool(io), m)
          }
     backupPath = new Path(s"${conf.path}/$BackupDir")
     _ <- conf.mode match {
-      case FixPaths | Merge if !conf.keepBackup => tool.deleteBackup(backupPath, conf.dryRun)
-      case _ =>  ().asRight
-    }
+           case FixPaths | Merge if !conf.keepBackup => tool.deleteBackup(backupPath, conf.dryRun)
+           case _                                    => ().asRight
+         }
   } yield ()
 
   private def fixPaths(config: AppConfig, io: FileManager, tool: MetadataTool): Either[AppError, Unit] = {
     val metaPath = new Path(s"${config.path}/$SparkMetadataDir")
 
     for {
-      allFiles <- io.listFiles(metaPath).tap(_.logInfo(s"Checked ${metaPath.toString} for Spark metadata files"))
+      allFiles           <- io.listFiles(metaPath).tap(_.logInfo(s"Checked ${metaPath.toString} for Spark metadata files"))
       metadataFilesToFix <- tool.filterMetadataFiles(allFiles)
       key <- tool
                .tap(_ => logger.debug("Trying to determine first partition key"))
@@ -99,7 +104,9 @@ object Application extends App {
           .tap(_.logInfo(s"Checked the old metadata directory '${oldMeta.toString}' for Spark metadata files"))
       oldMetadataFiles <- tool.filterMetadataFiles(allOldFiles)
       toMerge <-
-        tool.filterLastCompact(oldMetadataFiles).tap(_.logValueInfo(s"Old files to be merged into the new metadata folder"))
+        tool
+          .filterLastCompact(oldMetadataFiles)
+          .tap(_.logValueInfo(s"Old files to be merged into the new metadata folder"))
       _      <- tool.backupFile(targetFile.path, config.dryRun)
       merged <- tool.merge(toMerge, targetFile)
       _      <- tool.saveFile(targetFile.path, merged, config.dryRun)
@@ -111,7 +118,7 @@ object Application extends App {
     io: FileManager,
     tool: MetadataTool
   ): Either[AppError, Unit] = {
-    val dataPath =  config.path
+    val dataPath = config.path
     val metaPath = new Path(s"$dataPath/$SparkMetadataDir")
 
     for {
@@ -121,21 +128,21 @@ object Application extends App {
       filesInInputDir <- tool.listFilesRecursively(dataPath)
       dataFiles       <- filesInInputDir.filter(_.toString.endsWith(".parquet")).asRight
     } yield {
-      val add = "add"
-      val delete = "delete"
+      val add                 = "add"
+      val delete              = "delete"
       val metaRecordsByAction = metaRecords.groupMap(_.action)(_.path)
 
       val deleteRecords = metaRecordsByAction.getOrElse(delete, Seq.empty)
-      val addRecords = metaRecordsByAction.getOrElse(add, Seq.empty).filter(record => !deleteRecords.contains(record))
-      val otherRecords = metaRecordsByAction.filter(record => record._1 != add && record._1 != delete).values.flatten
+      val addRecords    = metaRecordsByAction.getOrElse(add, Seq.empty).filter(record => !deleteRecords.contains(record))
+      val otherRecords  = metaRecordsByAction.filter(record => record._1 != add && record._1 != delete).values.flatten
 
       val notDeletedData = deleteRecords.filter(dataFiles.contains)
-      val missingData = addRecords.diff(dataFiles)
-      val unknownData = dataFiles.diff(addRecords)
+      val missingData    = addRecords.diff(dataFiles)
+      val unknownData    = dataFiles.diff(addRecords)
       val noDataIssueDetected =
         notDeletedData.isEmpty && missingData.isEmpty && unknownData.isEmpty
 
-      if(noDataIssueDetected) {
+      if (noDataIssueDetected) {
         logger.info("No issue detected in data and metadata")
       } else {
         logger.error("Data issue detected")
@@ -144,28 +151,50 @@ object Application extends App {
     }
   }
 
+  private def createMetadata(
+    config: AppConfig,
+    io: FileManager,
+    tool: MetadataTool,
+    dataTool: DataTool,
+    createMetadata: CreateMetadata
+  ): Either[AppError, Unit] = {
+    val metadataDir = new Path(config.path, SparkMetadataDir)
+    for {
+      _           <- io.makeDir(metadataDir)
+      statuses    <- dataTool.listDataFileStatuses(config.path)
+      sinkStatuses = statuses.map(SinkFileStatus.asAddStatus)
+      _ <- tool.saveMetadata(
+             metadataDir,
+             sinkStatuses,
+             createMetadata.maxMicroBatchNumber,
+             createMetadata.compactionNumber,
+             config.dryRun
+           )
+    } yield ()
+  }
+
   private def printDetectedDataIssues(
     notDeletedData: Iterable[Path],
     missingData: Iterable[Path],
     unknownData: Iterable[Path],
     otherRecords: Iterable[Path]
   ): Unit = {
-    if(notDeletedData.nonEmpty) {
+    if (notDeletedData.nonEmpty) {
       logger.error(s"Data that should have been deleted. START")
       notDeletedData.foreach(r => logger.error(r.toString))
       logger.error(s"Data that should have been deleted. END.")
     }
-    if(missingData.nonEmpty) {
+    if (missingData.nonEmpty) {
       logger.error(s"Missing data. START")
       missingData.foreach(r => logger.error(r.toString))
       logger.error(s"Missing data. END")
     }
-    if(unknownData.nonEmpty) {
+    if (unknownData.nonEmpty) {
       logger.error(s"Unknown data. START")
       unknownData.foreach(r => logger.error(r.toString))
       logger.error(s"Unknown data. END")
     }
-    if(otherRecords.nonEmpty) {
+    if (otherRecords.nonEmpty) {
       logger.error(s"Unknown records in metadata. START")
       otherRecords.foreach(r => logger.error(r.toString))
       logger.error(s"Unknown records in metadata. END")
@@ -173,8 +202,8 @@ object Application extends App {
   }
 
   private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
-    config   <- ArgumentParser.createConfig(args)
-    io       <- initFileManager(config.filesystem)
+    config <- ArgumentParser.createConfig(args)
+    io     <- initFileManager(config.filesystem)
   } yield (config, io, new MetadataTool(io))
 
   private def fixFile(
@@ -198,9 +227,9 @@ object Application extends App {
   }.toEither.leftMap(err => InitializationError("Failed to initialize S3 Client", err.some))
 
   def initHdfs(): Either[AppError, FileSystem] = Try {
-    val hadoopConfDir = sys.env("HADOOP_CONF_DIR")
-    val coreSiteXmlPath = s"$hadoopConfDir/core-site.xml"
-    val hdfsSiteXmlPath = s"$hadoopConfDir/hdfs-site.xml"
+    val hadoopConfDir       = sys.env("HADOOP_CONF_DIR")
+    val coreSiteXmlPath     = s"$hadoopConfDir/core-site.xml"
+    val hdfsSiteXmlPath     = s"$hadoopConfDir/hdfs-site.xml"
     val hadoopConfiguration = new Configuration()
     hadoopConfiguration.addResource(new Path(coreSiteXmlPath))
     hadoopConfiguration.addResource(new Path(hdfsSiteXmlPath))
@@ -213,7 +242,7 @@ object Application extends App {
     (fs match {
       case Unix => UnixFileManager.asRight
       case Hdfs => initHdfs().map(hdfs => HdfsFileManager(hdfs))
-      case S3 => initS3().map(client => S3FileManager(client))
+      case S3   => initS3().map(client => S3FileManager(client))
     }).tap(fm => logger.debug(s"Initialized file manager : $fm"))
 
 }

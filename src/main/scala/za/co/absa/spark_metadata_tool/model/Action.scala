@@ -16,21 +16,6 @@
 
 package za.co.absa.spark_metadata_tool.model
 
-import org.apache.hadoop.fs.Path
-
-final case class AppConfig(
-  mode: Mode,
-  oldPath: Option[Path],
-  path: Path,
-  filesystem: TargetFilesystem,
-  keepBackup: Boolean,
-  verbose: Boolean,
-  logToFile: Boolean,
-  dryRun: Boolean
-)
-
-sealed trait Mode
-case object FixPaths                                                              extends Mode
-case object Merge                                                                 extends Mode
-case object CompareMetadataWithData                                               extends Mode
-final case class CreateMetadata(maxMicroBatchNumber: Int, compactionNumber: Int) extends Mode
+object Action {
+  val Add: String    = "add"
+}

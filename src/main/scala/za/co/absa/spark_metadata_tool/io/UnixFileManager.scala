@@ -17,7 +17,7 @@
 package za.co.absa.spark_metadata_tool.io
 
 import cats.implicits._
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileStatus, Path}
 import org.log4s.Logger
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.model.IoError
@@ -25,9 +25,10 @@ import za.co.absa.spark_metadata_tool.model.IoError
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
-import java.nio.file.Files
-import java.nio.file.Paths
+import java.net.URI
+import java.nio.file.{Files, Paths, Path => JPath}
 import scala.io.Source
+import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
 import scala.util.Using
 import scala.util.chaining._
@@ -57,9 +58,9 @@ case object UnixFileManager extends FileManager {
 
   override def copy(origin: Path, destination: Path): Either[IoError, Unit] = Try {
 
-    val bkpDir = Paths.get(withScheme(destination.getParent).toUri)
-    val from   = Paths.get(withScheme(origin).toUri)
-    val to     = Paths.get(withScheme(destination).toUri)
+    val bkpDir = Paths.get(toUriWithScheme(destination.getParent))
+    val from   = Paths.get(toUriWithScheme(origin))
+    val to     = Paths.get(toUriWithScheme(destination))
 
     if (Files.notExists(bkpDir)) {
       Files.createDirectories(bkpDir)
@@ -68,9 +69,32 @@ case object UnixFileManager extends FileManager {
     Files.copy(from, to)
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
 
+  override def makeDir(dir: Path): Either[IoError, Unit] =
+    catchAsIoError(Files.createDirectory(Paths.get(toUriWithScheme(dir)))).map(_ => ())
+
   def delete(paths: Seq[Path]): Either[IoError, Unit] = Try {
-    paths.foreach(p => Files.delete(Paths.get(withScheme(p).toUri)))
+    paths.foreach(p => Files.delete(Paths.get(toUriWithScheme(p))))
   }.toEither.map(_ => ()).leftMap(err => IoError(err.getMessage, err.some))
+
+  override def walkFileStatuses(baseDir: Path, filter: Path => Boolean): Either[IoError, Seq[FileStatus]] =
+    for {
+      it <- catchAsIoError(Files.walk(Paths.get(toUriWithScheme(baseDir))).iterator().asScala)
+      statuses <- it.filter(p => filter(new Path(p.toUri))).map(getFileStatus).toSeq.sequence
+    } yield statuses.sortBy(_.getPath.toUri)
+
+  private def getFileStatus(path: JPath): Either[IoError, FileStatus] =
+    for {
+      size <- catchAsIoError(Files.size(path))
+      isDir <- catchAsIoError(Files.isDirectory(path))
+      modificationTime <- catchAsIoError(Files.getLastModifiedTime(path)).map(_.toMillis)
+    } yield new FileStatus(
+      size,
+      isDir,
+      DefaultBlockReplication,
+      DefaultBlockSize,
+      modificationTime,
+      new Path(path.toUri)
+    )
 
   private def listDirectory(path: Path): Either[IoError, Seq[File]] = {
     val dir = new File(path.toString)
@@ -90,5 +114,8 @@ case object UnixFileManager extends FileManager {
     directory.exists && directory.isDirectory
   }.fold(err => Left(IoError(err.getMessage, err.some)), res => Right(res))
 
-  private def withScheme(path: Path): Path = new Path(s"file:///${path.toString}")
+  private def toUriWithScheme(path: Path): URI = {
+    // ensures that prepending file scheme is idempotent
+    new URI("file", path.toUri.getAuthority, path.toUri.getPath, null, null)
+  }
 }

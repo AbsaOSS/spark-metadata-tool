@@ -18,6 +18,7 @@ package za.co.absa.spark_metadata_tool
 
 import _root_.io.circe.parser._
 import _root_.io.circe.syntax._
+import _root_.io.circe.generic.auto._
 import cats.implicits._
 import org.apache.hadoop.fs.Path
 import org.log4s.Logger
@@ -34,12 +35,13 @@ import za.co.absa.spark_metadata_tool.model.StringLine
 import za.co.absa.spark_metadata_tool.model.IoError
 import za.co.absa.spark_metadata_tool.model.ParsingError
 import za.co.absa.spark_metadata_tool.model.MetadataRecord
+import za.co.absa.spark_metadata_tool.model.SinkFileStatus
 
 import scala.util.Try
 import scala.util.chaining._
 
 class MetadataTool(io: FileManager) {
-  private val compactFileSuffix = "compact"
+  private val compactFileSuffix       = "compact"
   implicit private val logger: Logger = org.log4s.getLogger
 
   /** Loads Spark Structured Streaming metadata file from specified path and parses its contents.
@@ -82,6 +84,72 @@ class MetadataTool(io: FileManager) {
     newBasePath: Path,
     firstPartitionKey: Option[String]
   ): Either[AppError, Seq[FileLine]] = data.traverse(line => processLine(line, newBasePath, firstPartitionKey))
+
+  def saveMetadata(
+    dir: Path,
+    statuses: Seq[SinkFileStatus],
+    maxMicroBatchNum: Int,
+    compactionPeriod: Int,
+    dryRun: Boolean
+  ): Either[AppError, Unit] = {
+    val lastCompaction = Compaction.lastCompaction(maxMicroBatchNum, compactionPeriod)
+    val compactedSize  = Compaction.compactedSize(statuses.length, maxMicroBatchNum, compactionPeriod)
+    for {
+      _ <- compactedMetadata(statuses, compactedSize, lastCompaction).map { case (lastCompaction, compacted) =>
+             saveCompactedMetadata(dir, lastCompaction, compacted, dryRun)
+           }.getOrElse(Right(()))
+      _ <- saveLooseMetadata(dir, looseMetadata(statuses, compactedSize, lastCompaction), dryRun)
+    } yield ()
+  }
+
+  private def compactedMetadata(
+    statuses: Seq[SinkFileStatus],
+    compactedSize: Int,
+    lastCompaction: Option[Int]
+  ): Option[(Int, Seq[SinkFileStatus])] =
+    lastCompaction.map((_, if (compactedSize > 0) statuses.take(compactedSize) else Seq.empty))
+
+  private def looseMetadata(
+    statuses: Seq[SinkFileStatus],
+    compactedSize: Int,
+    lastCompacted: Option[Int]
+  ): Seq[(Int, Iterable[SinkFileStatus])] =
+    if (compactedSize > 0) {
+      lastCompacted.map { lc =>
+        statuses.drop(compactedSize).mapWithIndex((status, idx) => (lc + 1 + idx, Seq(status)))
+      }.getOrElse {
+        val zeroth = (0, statuses.take(compactedSize + 1))
+        zeroth +: statuses.drop(compactedSize + 1).mapWithIndex((s, idx) => (idx + 1, Seq(s)))
+      }
+    } else {
+      val lc = lastCompacted.getOrElse(-1)
+      (Seq.fill(-compactedSize)(None) ++: statuses.map(Some(_))).mapWithIndex((s, idx) => (lc + 1 + idx, s))
+    }
+
+  def saveCompactedMetadata(
+    dir: Path,
+    compactionNum: Int,
+    metadata: Seq[SinkFileStatus],
+    dryRun: Boolean
+  ): Either[AppError, Unit] =
+    saveFile(
+      new Path(dir, s"$compactionNum.$compactFileSuffix"),
+      formatMetadata(metadata),
+      dryRun
+    )
+
+  def saveLooseMetadata(
+    dir: Path,
+    metadata: Seq[(Int, Iterable[SinkFileStatus])],
+    dryRun: Boolean
+  ): Either[AppError, Unit] =
+    metadata.map { case (batchNum, statuses) =>
+      saveFile(new Path(dir, batchNum.toString), formatMetadata(statuses), dryRun)
+    }.sequence
+      .map(_ => ())
+
+  private def formatMetadata(metadata: Iterable[SinkFileStatus]): Seq[FileLine] =
+    StringLine("v1") +: metadata.map(_.asJson).map(JsonLine).toSeq
 
   /** Saves the data into a file on provided path. If the file already exists, its contents will be overwritten.
     *
@@ -130,13 +198,13 @@ class MetadataTool(io: FileManager) {
   } yield key
 
   /** List all files in directory recursively.
-   *
-   * @param rootDirPath
-   *   path to root directory
-   * @return
-   *   all files in directory and all subdirectories recursively
-   */
-  def listFilesRecursively(rootDirPath: Path): Either[AppError, Seq[Path]] = {
+    *
+    * @param rootDirPath
+    *   path to root directory
+    * @return
+    *   all files in directory and all subdirectories recursively
+    */
+  def listFilesRecursively(rootDirPath: Path): Either[AppError, Seq[Path]] =
     for {
       dirs          <- io.listDirectories(rootDirPath)
       files         <- io.listFiles(rootDirPath)
@@ -144,38 +212,36 @@ class MetadataTool(io: FileManager) {
     } yield {
       files ++ filesInSubDir
     }
-  }
 
   /** Get metadata records from a metadata file.
-   *
-   * @param metadataFilePath
-   *   path to metadata file
-   * @return
-   *   metadata records from metadata file
-   */
-  def getMetaRecords(metadataFilePath: Path): Either[AppError, Seq[MetadataRecord]] = {
+    *
+    * @param metadataFilePath
+    *   path to metadata file
+    * @return
+    *   metadata records from metadata file
+    */
+  def getMetaRecords(metadataFilePath: Path): Either[AppError, Seq[MetadataRecord]] =
     for {
       loadedFile <- loadFile(metadataFilePath)
-      _ <- verifyMetadataFileContent(metadataFilePath.toString, loadedFile)
+      _          <- verifyMetadataFileContent(metadataFilePath.toString, loadedFile)
       metaRecords <- loadedFile.traverse {
-        case l: JsonLine =>
-          val path = l.cursor
-            .get[Path]("path")
-            .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.toString}"))
+                       case l: JsonLine =>
+                         val path = l.cursor
+                           .get[Path]("path")
+                           .leftMap(_ => NotFoundError(s"Couldn't find path in JSON line ${l.toString}"))
 
-          val action = l.cursor
-            .get[String]("action")
-            .leftMap(_ => NotFoundError(s"Couldn't find action in JSON line ${l.toString}"))
-          for {
-            p <- path
-            a <- action
-          } yield Some(MetadataRecord(p, a))
-        case _ => Right(None)
-      }
+                         val action = l.cursor
+                           .get[String]("action")
+                           .leftMap(_ => NotFoundError(s"Couldn't find action in JSON line ${l.toString}"))
+                         for {
+                           p <- path
+                           a <- action
+                         } yield Some(MetadataRecord(p, a))
+                       case _ => Right(None)
+                     }
     } yield {
       metaRecords.flatten
     }
-  }
 
   def backupFile(path: Path, dryRun: Boolean): Either[AppError, Unit] = (
     if (dryRun) {
@@ -201,7 +267,7 @@ class MetadataTool(io: FileManager) {
 
   def merge(oldFiles: Seq[MetadataFile], targetFile: MetadataFile): Either[AppError, Seq[FileLine]] = for {
     targetFileContent <- loadFile(targetFile.path)
-    _ <- verifyMetadataFileContent(targetFile.path.toString, targetFileContent)
+    _                 <- verifyMetadataFileContent(targetFile.path.toString, targetFileContent)
     version <- targetFileContent.headOption
                  .tap(v => logger.debug(s"Version value from the target file $targetFile: $v"))
                  .toRight(NotFoundError(s"No content in file ${targetFile.path}"))
@@ -210,8 +276,9 @@ class MetadataTool(io: FileManager) {
                   .tap(c => logger.debug(s"Will append ${c.size} lines from the target file $targetFile"))
                   .asRight
     oldFilesContent <- oldFiles.sorted.traverse(f => loadFile(f.path))
-    _ <- oldFiles.zip(oldFilesContent)
-           .traverse { case (file, content) => verifyMetadataFileContent(file.path.toString, content)}
+    _ <- oldFiles.zip(oldFilesContent).traverse { case (file, content) =>
+           verifyMetadataFileContent(file.path.toString, content)
+         }
     toPrepend <- oldFilesContent
                    .flatMap(_.drop(1))
                    .tap(c => logger.debug(s"Will merge ${c.size} lines from the old metadata files"))
@@ -227,7 +294,7 @@ class MetadataTool(io: FileManager) {
     .tap(_.logValueDebug(s"Last .compact file (if present) and following files"))
 
   private def getPathFromMetaFile(path: Path): Either[AppError, Path] = for {
-    files <- io.listFiles(path)
+    files     <- io.listFiles(path)
     metaFiles <- filterMetadataFiles(files)
     // avoid loading .compact files due to their potential size
     file <- metaFiles
@@ -291,12 +358,12 @@ class MetadataTool(io: FileManager) {
   def filterMetadataFiles(files: Seq[Path]): Either[IoError, Seq[Path]] = {
     val (metadataFiles, otherFiles) = files.partition { path =>
       val (prefix, suffix) = path.getName.span(_ != '.')
-      val isPrefixNumber = Try(prefix.toLong).map(_ => true).getOrElse(false)
+      val isPrefixNumber   = Try(prefix.toLong).map(_ => true).getOrElse(false)
       val isCompactOrEmpty = suffix.isEmpty || suffix == s".$compactFileSuffix"
       isPrefixNumber && isCompactOrEmpty
     }
 
-    if(otherFiles.nonEmpty)
+    if (otherFiles.nonEmpty)
       logger.info(s"Ignored non metadata files: ${otherFiles.map(_.toString)}")
 
     metadataFiles.asRight[IoError]
@@ -305,11 +372,12 @@ class MetadataTool(io: FileManager) {
   def verifyMetadataFileContent(path: String, lines: Seq[FileLine]): Either[AppError, Unit] = {
     def verifyJsonContent(lines: Seq[FileLine]): Boolean = lines.forall {
       case line: JsonLine => line.cursor.keys.exists(_.toSeq.contains("path"))
-      case _ => false
+      case _              => false
     }
     lines match {
-      case (firstLine:StringLine)::(rest:Seq[FileLine])
-        if firstLine.value == "v1" && rest.nonEmpty && verifyJsonContent(rest) => Right((): Unit)
+      case (firstLine: StringLine) :: (rest: Seq[FileLine])
+          if firstLine.value == "v1" && rest.nonEmpty && verifyJsonContent(rest) =>
+        Right((): Unit)
       case _ => Left(ParsingError(s"File $path did not match expected format", None))
     }
   }
