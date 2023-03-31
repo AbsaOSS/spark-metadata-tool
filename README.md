@@ -77,9 +77,9 @@ Example:
    `hdfs://authority/path/to/data/_spark_metadata/<max_micro_batch_number>`
 
 > **NOTE**
-> 
-> This tool trims data files to the size of `--max-micro-batch-number`. So make sure you counted your datafiles properly.
-> Also when set too high all  the data will end up in one `.compact` file.
+>
+> Metadata are aligned to the `--max-micro-batch-number,` so if the `—compaction-number` is higher than 
+> the number of metadata files, it can produce empty, but still valid, metadata files.
 
 ## Usage
 ### Obtaining
