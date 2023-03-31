@@ -78,7 +78,7 @@ Example:
 
 > **NOTE**
 >
-> Metadata are aligned to the `--max-micro-batch-number,` so if the `—compaction-number` is higher than 
+> Metadata are aligned to the `--max-micro-batch-number,` so if the `--compaction-number` is higher than 
 > the number of metadata files, it can produce empty, but still valid, metadata files.
 
 ## Usage
