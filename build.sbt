@@ -119,7 +119,7 @@ val compilerOptions = Seq(
 
 // JaCoCo code coverage
 Test / jacocoReportSettings := JacocoReportSettings(
-  title = s"spark-metadata-tool_${scalaVersion.value} Jacoco Report",
+  title = s"spark-metadata-tool Jacoco Report - scala:${scalaVersion.value}",
   formats = Seq(JacocoReportFormats.HTML, JacocoReportFormats.XML)
 )
 
