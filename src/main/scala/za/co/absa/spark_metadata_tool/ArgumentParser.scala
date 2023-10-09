@@ -25,19 +25,7 @@ import org.apache.log4j.PatternLayout
 import org.log4s.Logger
 import scopt.OParser
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
-import za.co.absa.spark_metadata_tool.model.AppConfig
-import za.co.absa.spark_metadata_tool.model.AppError
-import za.co.absa.spark_metadata_tool.model.CompareMetadataWithData
-import za.co.absa.spark_metadata_tool.model.FixPaths
-import za.co.absa.spark_metadata_tool.model.Hdfs
-import za.co.absa.spark_metadata_tool.model.InitializationError
-import za.co.absa.spark_metadata_tool.model.Merge
-import za.co.absa.spark_metadata_tool.model.ParsingError
-import za.co.absa.spark_metadata_tool.model.S3
-import za.co.absa.spark_metadata_tool.model.TargetFilesystem
-import za.co.absa.spark_metadata_tool.model.Unix
-import za.co.absa.spark_metadata_tool.model.UnknownFileSystemError
-import za.co.absa.spark_metadata_tool.model.CreateMetadata
+import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, ParsingError, S3, S3a, TargetFilesystem, Unix, UnknownFileSystemError}
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -182,6 +170,7 @@ object ArgumentParser {
     case _ if path.startsWith("/")       => Unix.asRight
     case _ if path.startsWith("hdfs://") => Hdfs.asRight
     case _ if path.startsWith("s3://")   => S3.asRight
+    case _ if path.startsWith("s3a://")  => S3a.asRight
     case _ =>
       UnknownFileSystemError(
         s"Couldn't extract filesystem from path $path"

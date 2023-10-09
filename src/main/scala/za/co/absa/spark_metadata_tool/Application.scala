@@ -24,24 +24,9 @@ import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
-import za.co.absa.spark_metadata_tool.model.{
-  AppConfig,
-  AppError,
-  AppErrorWithThrowable,
-  CompareMetadataWithData,
-  CreateMetadata,
-  FixPaths,
-  Hdfs,
-  InitializationError,
-  Merge,
-  NotFoundError,
-  S3,
-  SinkFileStatus,
-  TargetFilesystem,
-  Unix,
-  UnknownError
-}
+import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, AppErrorWithThrowable, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, S3a, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
 
+import java.net.URI
 import scala.util.Try
 import scala.util.chaining._
 
@@ -223,8 +208,15 @@ object Application extends App {
   } yield ()).tap(_.logInfo(s"Done processing file ${path.toString}"))
 
   def initS3(): Either[AppError, S3Client] = Try {
-    S3Client.builder().build()
-  }.toEither.leftMap(err => InitializationError("Failed to initialize S3 Client", err.some))
+    //This is done because aws sdk does not support overriding aws endpoint url via env variable:
+    //https://docs.aws.amazon.com/sdkref/latest/guide/settings-reference.html#EVarSettings
+    //https://github.com/aws/aws-sdk-java-v2/issues/4501
+    val endpoint = System.getenv("AWS_ENDPOINT_URL")
+    val builder = S3Client.builder()
+    if (endpoint.nonEmpty) builder.endpointOverride(new URI(endpoint))
+
+    builder.build()
+  }.toEither.leftMap(err => InitializationError("Failed to initialize S3A Client", err.some))
 
   def initHdfs(): Either[AppError, FileSystem] = Try {
     val hadoopConfDir       = sys.env("HADOOP_CONF_DIR")
@@ -242,7 +234,8 @@ object Application extends App {
     (fs match {
       case Unix => UnixFileManager.asRight
       case Hdfs => initHdfs().map(hdfs => HdfsFileManager(hdfs))
-      case S3   => initS3().map(client => S3FileManager(client))
+      case S3   => initS3().map(client => S3FileManager(client, "s3"))
+      case S3a  => initS3().map(client => S3FileManager(client, "s3a"))
     }).tap(fm => logger.debug(s"Initialized file manager : $fm"))
 
 }

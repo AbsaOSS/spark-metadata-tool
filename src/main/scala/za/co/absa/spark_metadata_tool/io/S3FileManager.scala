@@ -45,7 +45,7 @@ import scala.util.Try
 import scala.util.Using
 import scala.util.chaining._
 
-case class S3FileManager(s3: S3Client) extends FileManager {
+case class S3FileManager(s3: S3Client, scheme: String) extends FileManager {
   import S3FileManager._
   implicit private val logger: Logger = org.log4s.getLogger
 
@@ -124,7 +124,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
     val bucket = getBucket(baseDir)
     val prefix = ensureTrailingSlash(getKey(baseDir))
 
-    val builder = new URIBuilder().setScheme("s3").setHost(bucket)
+    val builder = new URIBuilder().setScheme(scheme).setHost(bucket)
 
     val request = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build()
 
@@ -171,7 +171,7 @@ case class S3FileManager(s3: S3Client) extends FileManager {
 
   private def listBucket(path: Path, filter: FileType): Either[IoError, Seq[Path]] = Try {
     val bucket     = getBucket(path)
-    val pathPrefix = s"s3://$bucket/"
+    val pathPrefix = s"$scheme://$bucket/"
     val rootKey    = path.toString.stripPrefix(pathPrefix)
 
     val req = ListObjectsV2Request

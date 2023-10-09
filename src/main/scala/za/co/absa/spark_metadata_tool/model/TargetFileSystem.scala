@@ -29,3 +29,6 @@ case object Hdfs extends TargetFilesystem {
 case object S3 extends TargetFilesystem {
   override def pathPrefix: String = "s3://"
 }
+case object S3a extends TargetFilesystem {
+  override def pathPrefix: String = "s3a://"
+}

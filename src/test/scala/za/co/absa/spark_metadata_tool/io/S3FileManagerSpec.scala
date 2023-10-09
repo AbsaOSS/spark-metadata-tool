@@ -45,7 +45,7 @@ class S3FileManagerSpec extends AnyFlatSpec with Matchers with OptionValues with
 
   private val s3 = mock[S3Client]
 
-  private val io = S3FileManager(s3)
+  private val io = S3FileManager(s3, "s3")
 
   private val TMinus10 = Instant.now().minus(Duration.ofMinutes(10))
 

@@ -52,6 +52,7 @@ In every run mode, the tool offers following universal features:
 - Backup is deleted after a successful run(can be overridden to keep the backup)
 - Currently supported file systems:
     - S3
+    - S3a
     - Unix
     - HDFS
 
@@ -141,6 +142,12 @@ Other options:
 To be able to perform any operation on S3 you must provide AWS credentials. The easiest way to do so is to set environment variables
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The application will read them automatically. For more information, as well as other
 ways to provide credentials, see [Using credentials](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials.html)
+
+### S3 Set up
+To be able to perform any operation on S3a you must provide AWS credentials. The easiest way to do so is to set environment variables
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The application will read them automatically. For more information, as well as other
+ways to provide credentials, see [Using credentials](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials.html)
+Additionally to set provider endpoint, environment variable `AWS_ENDPOINT_URL` has to be set
 
 ### HDFS Set up
 To be able to perform any operation on HDFS you must set environment variable `HADOOP_CONF_DIR`.
