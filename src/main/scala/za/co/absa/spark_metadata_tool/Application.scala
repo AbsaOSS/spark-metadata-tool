@@ -210,6 +210,7 @@ object Application extends App {
   def initS3(): Either[AppError, S3Client] = Try {
     //This is done because aws sdk does not support overriding aws endpoint url via env variable:
     //https://docs.aws.amazon.com/sdkref/latest/guide/settings-reference.html#EVarSettings
+    //https://github.com/aws/aws-sdk-java-v2/issues/4501
     val endpoint = System.getenv("AWS_ENDPOINT_URL")
     val builder = S3Client.builder()
     if (endpoint.nonEmpty) builder.endpointOverride(new URI(endpoint))
