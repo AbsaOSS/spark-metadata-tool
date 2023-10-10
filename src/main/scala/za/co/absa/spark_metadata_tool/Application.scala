@@ -24,7 +24,7 @@ import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
-import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, AppErrorWithThrowable, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, S3a, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
+import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, AppErrorWithThrowable, CompareFolders, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, S3a, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
 
 import java.net.URI
 import scala.util.Try
@@ -39,12 +39,18 @@ object Application extends App {
   }
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
-    (conf, io, tool) <- init(args).tap(_.logInfo("Initialized application"))
+    conf <- initConfig(args)
+    (io, tool) <- initIo(conf.filesystem).tap(_.logInfo("Initialized application"))
     _ <- conf.mode match {
            case FixPaths                => fixPaths(conf, io, tool)
            case Merge                   => mergeMetadataFiles(conf, io, tool)
            case CompareMetadataWithData => compareMetadataWithData(conf, io, tool)
            case m: CreateMetadata       => createMetadata(conf, io, tool, new DataTool(io), m)
+           case CompareFolders          =>
+             for {
+               (_, secondaryTool) <- initIo(conf.secondaryFilesystem)
+               _ <- compareFolders(conf, tool, secondaryTool)
+             } yield ()
          }
     backupPath = new Path(s"${conf.path}/$BackupDir")
     _ <- conf.mode match {
@@ -158,6 +164,32 @@ object Application extends App {
     } yield ()
   }
 
+  private def compareFolders(
+    config: AppConfig,
+    tool: MetadataTool,
+    secondaryTool: MetadataTool,
+  ): Either[AppError, Unit] = {
+    for {
+      dirContent <- tool.listDirectoryRecursively(config.path)
+        .map(_.map(path => path.toString.replaceFirst(config.path.toString, "")))
+      secondaryDirContent <- secondaryTool.listDirectoryRecursively(config.secondaryPath)
+        .map(_.map(path => path.toString.replaceFirst(config.secondaryPath.toString, "")))
+    } yield {
+      val diff = dirContent.diff(secondaryDirContent)
+      val oppositeDiff = secondaryDirContent.diff(dirContent)
+      if (diff.isEmpty && oppositeDiff.isEmpty) {
+        logger.info("Dirs are identical")
+      } else {
+        logger.error("Dirs are not identical")
+        logger.error("Paths that are different:")
+        (diff ++ oppositeDiff).toSet.foreach { path: String =>
+          logger.error(path)
+        }
+      }
+      ()
+    }
+  }
+
   private def printDetectedDataIssues(
     notDeletedData: Iterable[Path],
     missingData: Iterable[Path],
@@ -186,10 +218,10 @@ object Application extends App {
     }
   }
 
-  private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
-    config <- ArgumentParser.createConfig(args)
-    io     <- initFileManager(config.filesystem)
-  } yield (config, io, new MetadataTool(io))
+  private def initConfig(args: Array[String]): Either[AppError, AppConfig] = ArgumentParser.createConfig(args)
+
+  private def initIo(targetFilesystem: TargetFilesystem): Either[AppError, (FileManager, MetadataTool)] =
+    initFileManager(targetFilesystem).map(fileManager => (fileManager, new MetadataTool(fileManager)))
 
   private def fixFile(
     path: Path,
