@@ -37,3 +37,4 @@ case object Merge                                                               
 case object CompareMetadataWithData                                              extends Mode
 final case class CreateMetadata(maxMicroBatchNumber: Int, compactionNumber: Int) extends Mode
 case object CompareFolders                                                       extends Mode
+case object CompareMetadata                                                      extends Mode

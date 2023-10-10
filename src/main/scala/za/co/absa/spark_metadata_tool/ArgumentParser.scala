@@ -25,7 +25,7 @@ import org.apache.log4j.PatternLayout
 import org.log4s.Logger
 import scopt.OParser
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
-import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, CompareFolders, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, ParsingError, S3, S3a, TargetFilesystem, Unix, UnknownFileSystemError}
+import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, CompareFolders, CompareMetadata, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, ParsingError, S3, S3a, TargetFilesystem, Unix, UnknownFileSystemError}
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -112,6 +112,20 @@ object ArgumentParser {
             .required()
             .action((x, c) => c.copy(secondaryPath = x))
             .text("full path to secondary folder, including filesystem (e.g. s3://bucket/foo/root)")
+        ),
+      note(sys.props("line.separator")),
+      cmd("compare-metadata")
+        .action((_, c) => c.copy(mode = CompareMetadata))
+        .text("Compare content of metadata data files in two different data locations")
+        .children(
+          opt[Path]('p', "path")
+            .required()
+            .action((x, c) => c.copy(path = x))
+            .text("full path to root data folder, including filesystem (e.g. s3://bucket/foo/root)"),
+          opt[Path]('s', "secondarypath")
+            .required()
+            .action((x, c) => c.copy(secondaryPath = x))
+            .text("full path to root secondary data folder, including filesystem (e.g. s3://bucket/foo/root)")
         ),
       note(sys.props("line.separator")),
       note("Other options:"),
