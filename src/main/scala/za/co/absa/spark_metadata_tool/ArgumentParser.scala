@@ -152,10 +152,16 @@ object ArgumentParser {
     parseResult
       .fold(Left(ParsingError("Couldn't parse provided arguments", None)): Either[AppError, AppConfig]) { conf =>
         for {
-          _  <- initLogging(conf.verbose, conf.logToFile).tap(_.logDebug("Initialized logging"))
+          _ <- initLogging(conf.verbose, conf.logToFile).tap(_.logDebug("Initialized logging"))
           fs <- getFsFromPath(conf.path.toString).tap(_.logValueDebug("Derived filesystem from path"))
+          secondaryFs <- (getFsFromPath(conf.secondaryPath.toString) match {
+            case Right(value) => Right(Some(value))
+            case Left(_) if conf.secondaryPath.toString == "default" => Right(None)
+            case Left(value) => Left(value)
+          }).tap(_.logValueDebug("Derived secondary filesystem from path"))
         } yield conf.copy(
-          filesystem = fs
+          filesystem = fs,
+          secondaryFilesystem = secondaryFs.getOrElse(Unix)
         )
       }
       .tap(_.logValueDebug("Initialized application config"))
