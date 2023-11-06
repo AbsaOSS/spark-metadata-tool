@@ -82,6 +82,16 @@ Example:
 > Metadata are aligned to the `--max-micro-batch-number,` so if the `--compaction-number` is higher than 
 > the number of metadata files, it can produce empty, but still valid, metadata files.
 
+### compare-folders
+- Compares content of two folders and log difference
+
+Note that the tool does not perform any operation to file system
+
+### compare-metadata
+- Compares content of metadata data files in two different data locations
+
+Note that the tool does not perform any operation to file system
+
 ## Usage
 ### Obtaining
 The application is being published as a standalone executable JAR. Simply download the most recent version of the file `spark-metadata-tool_2.13-x.y.z-assembly.jar` from the [package repository](https://github.com/orgs/AbsaOSS/packages?repo_name=spark-metadata-tool).
@@ -129,6 +139,15 @@ Create Spark structured streaming metadata
   -c, --compaction-number <value>
                           set compaction number
 
+Command: compare-folders [options]
+Compares content of two folders and log difference
+  -p, --path <value>       full path to the folder, including filesystem (e.g. s3://bucket/foo/root)
+  -s, --secondarypath <value>       full path to the other folder, including filesystem (e.g. s3://bucket/foo/root)
+
+Command: compare-metadata [options]
+Compares content of metadata data files in two different data locations
+  -p, --path <value>       full path to root data folder, including filesystem (e.g. s3://bucket/foo/root)
+  -s, --secondarypath <value>       full path to root secondary data folder, including filesystem (e.g. s3://bucket/foo/root)
 
 Other options:
   -k, --keep-backup        persist backup files after successful run

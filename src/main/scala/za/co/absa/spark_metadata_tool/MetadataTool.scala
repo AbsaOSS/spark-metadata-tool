@@ -213,6 +213,22 @@ class MetadataTool(io: FileManager) {
       files ++ filesInSubDir
     }
 
+  /** List content of directory recursively.
+   *
+   * @param rootDirPath
+   * path to root directory
+   * @return
+   * content of directory and all subdirectories recursively
+   */
+  def listDirectoryRecursively(rootDirPath: Path): Either[AppError, Seq[Path]] =
+    for {
+      dirs <- io.listDirectories(rootDirPath)
+      files <- io.listFiles(rootDirPath)
+      filesInSubDir <- dirs.flatTraverse(dir => listDirectoryRecursively(dir))
+    } yield {
+      dirs ++ files ++ filesInSubDir
+    }
+
   /** Get metadata records from a metadata file.
     *
     * @param metadataFilePath

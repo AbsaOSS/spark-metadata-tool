@@ -24,7 +24,7 @@ import org.log4s.Logger
 import software.amazon.awssdk.services.s3.S3Client
 import za.co.absa.spark_metadata_tool.LoggingImplicits._
 import za.co.absa.spark_metadata_tool.io.{FileManager, HdfsFileManager, S3FileManager, UnixFileManager}
-import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, AppErrorWithThrowable, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, S3a, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
+import za.co.absa.spark_metadata_tool.model.{AppConfig, AppError, AppErrorWithThrowable, CompareFolders, CompareMetadata, CompareMetadataWithData, CreateMetadata, FixPaths, Hdfs, InitializationError, Merge, NotFoundError, S3, S3a, SinkFileStatus, TargetFilesystem, Unix, UnknownError}
 
 import java.net.URI
 import scala.util.Try
@@ -39,12 +39,22 @@ object Application extends App {
   }
 
   def run(args: Array[String]): Either[AppError, Unit] = for {
-    (conf, io, tool) <- init(args).tap(_.logInfo("Initialized application"))
+    conf <- initConfig(args)
+    (io, tool) <- initIo(conf.filesystem).tap(_.logInfo("Initialized application"))
     _ <- conf.mode match {
-           case FixPaths                => fixPaths(conf, io, tool)
-           case Merge                   => mergeMetadataFiles(conf, io, tool)
-           case CompareMetadataWithData => compareMetadataWithData(conf, io, tool)
-           case m: CreateMetadata       => createMetadata(conf, io, tool, new DataTool(io), m)
+           case FixPaths                                => fixPaths(conf, io, tool)
+           case Merge                                   => mergeMetadataFiles(conf, io, tool)
+           case CompareMetadataWithData                 => compareMetadataWithData(conf, io, tool)
+           case m: CreateMetadata                       => createMetadata(conf, io, tool, new DataTool(io), m)
+           case CompareFolders | CompareMetadata =>
+             for {
+               (secondaryIo, secondaryTool) <- initIo(conf.secondaryFilesystem)
+               _ <- conf.mode match {
+                 case CompareFolders  => compareFolders(conf, tool, secondaryTool)
+                 case CompareMetadata => compareMetadataFolders(conf, tool, io, secondaryTool, secondaryIo)
+                 case _               => ().asRight
+               }
+             } yield ()
          }
     backupPath = new Path(s"${conf.path}/$BackupDir")
     _ <- conf.mode match {
@@ -158,6 +168,87 @@ object Application extends App {
     } yield ()
   }
 
+  private def compareFolders(
+    config: AppConfig,
+    tool: MetadataTool,
+    secondaryTool: MetadataTool,
+  ): Either[AppError, Unit] = {
+    for {
+      dirContent <- tool.listDirectoryRecursively(config.path)
+        .map(_.map(path => path.toString.replaceFirst(config.path.toString, "")))
+      secondaryDirContent <- secondaryTool.listDirectoryRecursively(config.secondaryPath)
+        .map(_.map(path => path.toString.replaceFirst(config.secondaryPath.toString, "")))
+    } yield {
+      val diff = dirContent.diff(secondaryDirContent)
+      val oppositeDiff = secondaryDirContent.diff(dirContent)
+      if (diff.isEmpty && oppositeDiff.isEmpty) {
+        logger.info("Dirs are identical")
+      } else {
+        logger.error("Dirs are not identical")
+        logger.error("Paths that are different:")
+        (diff ++ oppositeDiff).toSet.foreach { path: String =>
+          dirContent.find(_.endsWith(path)).foreach(p => logger.error(s"${config.path}$p"))
+          secondaryDirContent.find(_.endsWith(path)).foreach(p => logger.error(s"${config.secondaryPath}$p"))
+        }
+      }
+      ()
+    }
+  }
+
+  private def compareMetadataFolders(
+    config: AppConfig,
+    tool: MetadataTool,
+    io: FileManager,
+    secondaryTool: MetadataTool,
+    secondaryIo: FileManager,
+  ): Either[AppError, Unit] = {
+    val dataPath = config.path
+    val metaPath = new Path(s"$dataPath/$SparkMetadataDir")
+    val secondaryDataPath = config.secondaryPath
+    val secondaryMetaPath = new Path(s"$secondaryDataPath/$SparkMetadataDir")
+
+    for {
+      metaPaths <- io.listFiles(metaPath)
+      usedMetaFiles <- tool.filterLastCompact(metaPaths)
+      metaRecords <- usedMetaFiles.flatTraverse(metaFile => tool.getMetaRecords(metaFile.path))
+
+      secondaryMetaPaths <- secondaryIo.listFiles(secondaryMetaPath)
+      secondaryUsedMetaFiles <- secondaryTool.filterLastCompact(secondaryMetaPaths)
+      secondaryMetaRecords <- secondaryUsedMetaFiles.flatTraverse(metaFile => secondaryTool.getMetaRecords(metaFile.path))
+    } yield {
+      val incorrectMetaRecords =
+        metaRecords.map(_.path.toString).filter(p => !p.startsWith(dataPath.toString))
+      val incorrectSecondaryMetaRecords =
+        secondaryMetaRecords.map(_.path.toString).filter(p => !p.startsWith(secondaryDataPath.toString))
+
+      if(incorrectMetaRecords.nonEmpty) {
+        logger.error(s"Metafiles in $dataPath contains different filesystems")
+        incorrectMetaRecords.foreach(p => logger.error(p))
+      }
+      if (incorrectSecondaryMetaRecords.nonEmpty) {
+        logger.error(s"Metafiles in $secondaryDataPath contains different filesystems")
+        incorrectSecondaryMetaRecords.foreach(p => logger.error(p))
+      }
+
+      val metaPaths =
+        metaRecords.map(_.path.toString.replaceFirst(dataPath.toString, ""))
+      val secondaryMetaPaths =
+        secondaryMetaRecords.map(_.path.toString.replaceFirst(secondaryDataPath.toString, ""))
+
+      val diff = metaPaths.diff(secondaryMetaPaths)
+      val oppositeDiff = secondaryMetaPaths.diff(metaPaths)
+      if (diff.isEmpty && oppositeDiff.isEmpty) {
+        logger.info("Meta files are identical")
+      } else {
+        logger.error("Meta files are not identical")
+        logger.error("Paths that are different:")
+        (diff ++ oppositeDiff).toSet.foreach { path: String =>
+          logger.error(path)
+        }
+      }
+    }
+  }
+
   private def printDetectedDataIssues(
     notDeletedData: Iterable[Path],
     missingData: Iterable[Path],
@@ -186,10 +277,10 @@ object Application extends App {
     }
   }
 
-  private def init(args: Array[String]): Either[AppError, (AppConfig, FileManager, MetadataTool)] = for {
-    config <- ArgumentParser.createConfig(args)
-    io     <- initFileManager(config.filesystem)
-  } yield (config, io, new MetadataTool(io))
+  private def initConfig(args: Array[String]): Either[AppError, AppConfig] = ArgumentParser.createConfig(args)
+
+  private def initIo(targetFilesystem: TargetFilesystem): Either[AppError, (FileManager, MetadataTool)] =
+    initFileManager(targetFilesystem).map(fileManager => (fileManager, new MetadataTool(fileManager)))
 
   private def fixFile(
     path: Path,

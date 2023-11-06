@@ -23,6 +23,8 @@ final case class AppConfig(
   oldPath: Option[Path],
   path: Path,
   filesystem: TargetFilesystem,
+  secondaryPath: Path,
+  secondaryFilesystem: TargetFilesystem,
   keepBackup: Boolean,
   verbose: Boolean,
   logToFile: Boolean,
@@ -30,7 +32,9 @@ final case class AppConfig(
 )
 
 sealed trait Mode
-case object FixPaths                                                              extends Mode
-case object Merge                                                                 extends Mode
-case object CompareMetadataWithData                                               extends Mode
+case object FixPaths                                                             extends Mode
+case object Merge                                                                extends Mode
+case object CompareMetadataWithData                                              extends Mode
 final case class CreateMetadata(maxMicroBatchNumber: Int, compactionNumber: Int) extends Mode
+case object CompareFolders                                                       extends Mode
+case object CompareMetadata                                                      extends Mode
