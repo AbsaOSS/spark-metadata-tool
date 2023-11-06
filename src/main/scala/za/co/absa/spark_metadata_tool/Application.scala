@@ -187,7 +187,8 @@ object Application extends App {
         logger.error("Dirs are not identical")
         logger.error("Paths that are different:")
         (diff ++ oppositeDiff).toSet.foreach { path: String =>
-          logger.error(path)
+          dirContent.find(_.endsWith(path)).foreach(p => logger.error(s"${config.path}$p"))
+          secondaryDirContent.find(_.endsWith(path)).foreach(p => logger.error(s"${config.secondaryPath}$p"))
         }
       }
       ()
